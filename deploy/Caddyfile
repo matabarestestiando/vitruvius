@@ -1,0 +1,10 @@
+# Enable only after DNS A points to 142.93.15.239 and AAAA is correct/removed.
+vitruvius.work {
+    encode zstd gzip
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+        Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.digitaloceanspaces.com; img-src 'self' data:; frame-ancestors 'none'"
+    }
+    reverse_proxy 127.0.0.1:8000
+}
