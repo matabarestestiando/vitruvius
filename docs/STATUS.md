@@ -1,5 +1,14 @@
 # Estado actual: consejo y conversaciones libres
 
+## Recuperación de tareas pendientes
+
+Se recuperó el tercer libro, AI Agents in Action (Second Edition), desde el objeto privado ya existente: ready con 392 páginas y 590/590 fragmentos indexados. Su entrega anterior no figuraba en la cola ni entre los trabajos activos/reservados. No se volvió a subir el archivo ni se aprobaron sus fuentes automáticamente.
+
+La reconciliación periódica context.recover revisa documentos queued con archivo guardado y antigüedad mínima de dos minutos. Comprueba la cola celery y las entregas reservadas/activas antes de reenviar. Los bloqueos de fila con SKIP LOCKED evitan tocar una ingestión activa; la marca de envío se confirma antes de publicar, sin escrituras posteriores que pudieran sobrescribir ready. Un fallo de publicación conserva la solicitud durable para reintentar. La comprobación se omite si no se pueden verificar las entregas; no publica a ciegas. El worker y Redis deben estar disponibles para recuperar. Los posibles duplicados tardíos siguen protegidos por el guard de estado y la transacción atómica de ingestión.
+
+Validación: 77 pruebas backend, prueba real de bloqueo PostgreSQL que impide reenviar trabajo activo, recuperación única de una entrega faltante, comprobación real del broker y programación periódica. Los tres libros del propietario están procesados.
+
+
 ## Procesamiento de libros y avance real
 
 Los PDF con texto digital se extraen primero con pypdf conservando el número de página; Docling se mantiene para el análisis de diseño cuando no se detecta texto en la muestra inicial o se solicita PDF_EXTRACTION_MODE=layout. No se activa OCR ni se simula lectura de imágenes. Se registran páginas leídas, páginas sin texto y método de extracción. El texto nativo puede representar tablas sin su estructura de diseño; consulte el PDF original para verificarlas.
@@ -23,7 +32,7 @@ Corregida la configuración de iconos: casillas, estados y selectores usan SVG i
 - Vitruvius evalúa declaraciones del propietario y propone recuerdos duraderos con razón y cita literal. No guarda automáticamente las propuestas. El propietario puede aprobarlas, descartarlas o pedir expresamente que se guarde un texto.
 - Las peticiones explícitas escriben en la memoria privada y conservan el texto aprobado como registro canónico recuperable. La búsqueda no depende de que Graphiti haya extraído relaciones de ese texto. El catálogo general no expone los textos de memoria.
 - Producción verificada: inicio sin proyecto; revisión real por modelo con propuesta sin escritura; consentimiento obligatorio; guardado real en Graphiti privado y recuperación del texto aprobado; especificación solicitada, aprobada y exportada; limpieza completa de datos sintéticos.
-- 74 pruebas backend y compilación frontend correctas. El procesamiento de carpetas conserva sus tres pruebas de navegador. Vista aislada del portal validada sin proyectos ni chat.
+- 77 pruebas backend y compilación frontend correctas. El procesamiento de carpetas conserva sus tres pruebas de navegador. Vista aislada del portal validada sin proyectos ni chat.
 - No se probó la conexión desde las cuentas particulares del propietario en Gemini, ChatGPT y Claude Code; cada cliente debe admitir MCP remoto y la autenticación existente. Actualice las herramientas del cliente para usar el nuevo recorrido.
 - Datos y asociaciones anteriores conservados. Los ámbitos internos de compatibilidad son privados por conversación y no son una configuración del producto. Véase CONVERSATION_MODEL.md.
 

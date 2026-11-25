@@ -41,3 +41,9 @@ Digital PDFs now use native text first, retaining page numbers. Docling CPU rema
 The worker publishes content-free Redis progress with a two-hour TTL, throttled to once per second except phase changes. Catalog responses project it onto queued references. The ingestion transaction commits ready only after every embedding has been written. Confirm corpus counts rather than inferring completion from a progress percentage.
 
 Use a warm/graceful worker stop for deployments. New tasks use late acknowledgements and reject-on-worker-loss to permit safe redelivery; completed document guards and atomic chunk replacement make reexecution idempotent. Older tasks accepted before this setting may need explicit requeue from the existing private object after a controlled stop. Never requeue a ready document or auto-approve its source library.
+
+## Reconcile queued uploads
+
+context.recover is scheduled every 60 seconds on the single processing worker. It considers durable queued documents after a 120-second grace, verifies the default celery queue plus live reserved/active deliveries, skips locked document rows and expired temporary attachments, and resends missing deliveries from their existing object. It does not restart ready documents or auto-approve authorship. Broker/control-check failure defers recovery safely. This deployment has no alternate queues or priorities.
+
+Finalization stores the dispatch request timestamp before publication; there is deliberately no database write after publishing that could race the worker's ready commit. Publishing failure returns a durable queued/pending_retry state. The reconciler retains that request for a later attempt. It is not a distributed exactly-once protocol; duplicate late deliveries are harmless because the worker locks the row and refuses to reingest a ready document.

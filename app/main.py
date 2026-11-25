@@ -715,13 +715,14 @@ def finalize(id: str, db: DB = D):
     )
     if head["ContentLength"] <= 0:
         raise HTTPException(422, "El archivo está vacío")
-    doc.data = {**doc.data, "status": "queued", "size_bytes": head["ContentLength"]}
+    doc.data = {**doc.data, "status": "queued", "size_bytes": head["ContentLength"],"ingest_dispatch_requested_at":now().isoformat()}
     db.commit()
     from .worker import ingest
 
     from .processing import Progress
     Progress(id)("waiting")
-    ingest.delay(id)
+    try:ingest.delay(id)
+    except Exception:return {"status":"queued","delivery":"pending_retry"}
     return {"status": "queued"}
 
 

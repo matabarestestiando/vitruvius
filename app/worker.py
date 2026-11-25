@@ -16,7 +16,7 @@ celery.conf.update(
     task_ignore_result=True,
     task_acks_late=True,
     task_reject_on_worker_lost=True,
-    beat_schedule={"expire-context": {"task": "context.expire", "schedule": 60.0}},
+    beat_schedule={"expire-context": {"task": "context.expire", "schedule": 60.0},"recover-ingestion":{"task":"context.recover","schedule":60.0}},
 )
 
 
@@ -29,6 +29,17 @@ def expire_context():
     if Session:
         with Session() as db:
             return cleanup(db)
+
+
+@celery.task(name="context.recover")
+def recover_ingestion():
+    from .ingestion_recovery import known_deliveries,recover
+    if not Session:return {"recovered":0}
+    try:pending=known_deliveries(celery)
+    except Exception:return {"recovered":0,"status":"delivery_check_unavailable"}
+    with Session() as db:
+        ids=recover(db,pending,ingest.delay)
+    return {"recovered":len(ids),"status":"checked"}
 
 
 @celery.task(name="context.ingest", soft_time_limit=3300, time_limit=3600)
