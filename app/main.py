@@ -146,6 +146,11 @@ def catalog(db: DB = D):
         for k in kinds
     }
 
+    result["project"]=[p for p in result["project"] if not p.get("internal_context")]
+    from .conversation_memory import candidates
+    result["memory_candidate"]=[{k:v for k,v in c.items() if k not in ("text","reason","evidence")} for c in candidates(db)]
+    result["memory_event"]=[{k:v for k,v in e.items() if k not in ("text","evidence")} for e in result["memory_event"]]
+
     for ref in result.get("reference", []):
         doc = db.get(Record, ref.get("document_id")) if ref.get("document_id") else None
         if doc and doc.kind == "context":
@@ -492,8 +497,23 @@ def skills(data: SkillIn, db: DB = D):
 @app.post("/api/sessions", dependencies=[O])
 def sessions(data: SessionIn, db: DB = D):
     record(db, data.board_id, "board")
-    record(db, data.project_id, "project")
-    return add(db, "session", data.model_dump())
+    if data.project_id:
+        record(db, data.project_id, "project")
+        scope_id=data.project_id
+    else:
+        # Keep legacy storage contracts isolated per conversation; never require an owner-created project.
+        scope=Record(kind="project",data={"name":data.title,"internal_context":True})
+        db.add(scope);db.flush();scope_id=scope.id
+    return add(db, "session", {**data.model_dump(),"project_id":scope_id})
+
+
+@app.post("/api/library-session", dependencies=[O])
+def library_session(board_id: str, db: DB = D):
+    record(db,board_id,"board")
+    for row in db.scalars(select(Record).where(Record.kind=="session")):
+        if row.data.get("session_kind")=="library" and row.data["board_id"]==board_id:return output(row)
+    created=sessions(SessionIn(board_id=board_id,title="Biblioteca de fuentes"),db)
+    row=record(db,created["id"],"session");row.data={**row.data,"session_kind":"library"};db.commit();return output(row)
 
 
 @app.get("/api/sessions/{id}/messages", dependencies=[O])
@@ -559,6 +579,13 @@ async def run_turn(db, id, data):
             )
         )
         db.commit()
+        from .conversation_memory import explicit_command, remember, RememberIn
+        requested_memory=explicit_command(data.text)
+        if requested_memory:
+            result=await remember(db,id,RememberIn(text=requested_memory,owner_requested=True))
+            db.add(Message(session_id=id,speaker="Memoria",content="Guardado en memoria de largo plazo por petición explícita del propietario. Registro: "+result["record_id"],citations=[]))
+            db.commit()
+            return messages(id,db)
         from .chat_repositories import snapshot
         repository_context = await asyncio.to_thread(snapshot, data.text)
         if repository_context:
@@ -572,9 +599,21 @@ async def run_turn(db, id, data):
         experts = [record(db, e, "expert") for e in board.data["expert_ids"]]
         db.commit()  # Release read snapshots before the asynchronous graph executes.
         async with AsyncPostgresSaver.from_conn_string(url) as saver:
-            await BoardRunner(db, session, experts, saver).run(
-                transcript, data.max_turns, str(uuid4())
-            )
+            runner=BoardRunner(db, session, experts, saver)
+            await runner.run(transcript, data.max_turns, str(uuid4()))
+        # Evaluating worth is distinct from approving permanence. Failure never fabricates a saved memory.
+        from .conversation_memory import review as review_memory
+        try:
+            proposed=await review_memory(db,session,runner.complete)
+            status={"status":"reviewed","proposed":len(proposed)}
+            if proposed:
+                db.add(Message(session_id=id,speaker="Memoria propuesta",content="Posibles recuerdos útiles; todavía NO guardados a largo plazo. Revise y apruebe cada texto o descarte la propuesta.\n"+"\n".join(p["id"]+": "+p["text"]+" — "+p["reason"] for p in proposed),citations=[]))
+        except Exception:
+            db.rollback()
+            status={"status":"unavailable","proposed":0}
+            db.add(Message(session_id=id,speaker="Memoria",content="No se pudieron evaluar nuevos recuerdos en este turno. No se guardaron propuestas automáticamente.",citations=[]))
+        session.data={**session.data,"memory_review":status}
+        db.commit()
         # REQUEST attachments are retired after this call, including when the model fails.
         return messages(id, db)
     except HTTPException:
@@ -733,12 +772,13 @@ def export(
     id: str,
     target: str = Query(default="codex", pattern="^(codex|claude-code)$"),
     db: DB = D,
+    session_id: str | None = None,
 ):
     project = record(db, id, "project")
     all_artifacts = [
         r
         for r in db.scalars(select(Record).where(Record.kind == "artifact"))
-        if r.data["project_id"] == id
+        if r.data["project_id"] == id and (session_id is None or r.data["session_id"]==session_id)
     ]
     superseded = {r.data.get("previous_id") for r in all_artifacts}
     current = [r for r in all_artifacts if r.id not in superseded]
@@ -867,6 +907,7 @@ async def memories(data: MemoryIn, db: DB = D):
             "group_id": group,
             "episode_id": result["episode_id"],
             "status": "approved",
+            "text": data.text,
         },
     )
     return {**result, "record_id": event["id"]}
@@ -966,20 +1007,24 @@ async def implementation_review(id: str, data: ReviewIn, db: DB = D):
 
 @app.post("/api/memories/search", dependencies=[O])
 async def memory_search(data: MemorySearchIn, db: DB = D):
-    if not settings.memory_token:
-        raise HTTPException(503, "Memoria no configurada")
     if data.scope != "personal":
         record(db, data.target_id, data.scope)
     group = "vitruvius:" + data.scope + ":" + (data.target_id or "owner")
-    async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.post(
-            settings.memory_url + "/search",
-            headers={"Authorization": "Bearer " + settings.memory_token},
-            json={"group_id": group, "query": data.query, "limit": 6},
-        )
-    if r.status_code >= 400:
-        raise HTTPException(502, "Búsqueda de memoria no disponible")
-    return r.json()
+    from .memory_recall import ledger_facts
+    approved=ledger_facts(db,group,data.query,limit=3)
+    derived=[];graph_status="unavailable"
+    if settings.memory_token:
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                r=await client.post(settings.memory_url+"/search",headers={"Authorization":"Bearer "+settings.memory_token},json={"group_id":group,"query":data.query,"limit":3})
+            if r.status_code<400:
+                derived=[{**f,"source":"graphiti_derived_fact"} for f in r.json()["facts"]]
+                graph_status="available"
+        except (httpx.HTTPError,ValueError,KeyError):
+            pass
+    if graph_status=="unavailable" and not approved:
+        raise HTTPException(502,"Búsqueda de memoria no disponible")
+    return {"facts":approved+derived,"graph_status":graph_status,"approved_record_count":len(approved),"graph_fact_count":len(derived)}
 
 
 @app.delete("/api/sessions/{id}", dependencies=[O])
@@ -1013,6 +1058,8 @@ async def delete_session(id: str, db: DB = D):
             remove_document(db, doc)
     from .local_repositories import cleanup as cleanup_local
     cleanup_local(db, session_id=id)
+    for candidate in list(db.scalars(select(Record).where(Record.kind=="memory_candidate"))):
+        if candidate.data["session_id"]==id:db.delete(candidate)
     db.execute(delete(Message).where(Message.session_id == id))
     db.delete(session)
     db.commit()
@@ -1020,6 +1067,48 @@ async def delete_session(id: str, db: DB = D):
         "deleted": True,
         "note": "Los documentos permanentes, artefactos y memorias aprobadas conservan su retención independiente",
     }
+
+
+from . import conversation_memory as conversation_memory
+
+
+@app.get("/api/memory-candidates", dependencies=[O])
+def all_memory_candidates(db: DB = D):
+    return conversation_memory.candidates(db)
+
+
+@app.get("/api/approved-memories", dependencies=[O])
+def approved_memories(db: DB = D):
+    return [output(r) for r in db.scalars(select(Record).where(Record.kind=="memory_event")) if r.data.get("status")=="approved"]
+
+
+@app.get("/api/sessions/{id}/memory-candidates", dependencies=[O])
+def get_memory_candidates(id: str, db: DB = D):
+    record(db,id,"session")
+    return conversation_memory.candidates(db,id)
+
+
+@app.post("/api/memory-candidates/{id}/approve", dependencies=[O])
+async def approve_memory_candidate_route(id: str, data: conversation_memory.ApprovalIn, db: DB = D):
+    return await conversation_memory.approve(db,id,data.approved)
+
+
+@app.post("/api/memory-candidates/{id}/dismiss", dependencies=[O])
+def dismiss_memory_candidate_route(id: str, db: DB = D):
+    row=record(db,id,"memory_candidate")
+    if row.data["status"]!="proposed":raise HTTPException(409,"La propuesta ya fue atendida")
+    row.data={**row.data,"status":"dismissed"};db.commit();return output(row)
+
+
+@app.post("/api/sessions/{id}/remember", dependencies=[O])
+async def remember_route(id: str, data: conversation_memory.RememberIn, db: DB = D):
+    return await conversation_memory.remember(db,id,data)
+
+
+@app.get("/api/sessions/{id}/export", dependencies=[O])
+def export_session(id: str, target: str = Query(default="codex",pattern="^(codex|claude-code)$"), db: DB = D):
+    session=record(db,id,"session")
+    return export(session.data["project_id"],target,db,session_id=id)
 
 
 # Local code is explicitly shared as an expiring snapshot, never a server filesystem path.
@@ -1076,30 +1165,41 @@ def list_boards() -> list[dict]:
         ]
 
 
-@mcp.tool()
 def list_projects() -> list[dict]:
     """List available projects so the conversation can start in the client without portal configuration."""
     with database.Session() as db:
-        return [output(r) for r in db.scalars(select(Record).where(Record.kind == "project"))]
+        return [output(r) for r in db.scalars(select(Record).where(Record.kind == "project")) if not r.data.get("internal_context")]
 
 
 @mcp.tool()
 def list_sessions() -> list[dict]:
     with database.Session() as db:
         return [
-            output(r)
-            for r in db.scalars(select(Record).where(Record.kind == "session"))
+            {k:v for k,v in output(r).items() if k!="project_id"}
+            for r in db.scalars(select(Record).where(Record.kind == "session")) if r.data.get("session_kind")!="library"
         ]
 
 
 @mcp.tool()
 def create_session(
-    board_id: str, project_id: str, title: str = "Nueva discusión"
+    board_id: str, project_id: str | None = None, title: str = "Nueva discusión"
 ) -> dict:
+    """Create a council conversation; omit project_id. New clients should use start_conversation."""
     with database.Session() as db:
-        return sessions(
-            SessionIn(board_id=board_id, project_id=project_id, title=title), db
-        )
+        result=sessions(SessionIn(board_id=board_id, project_id=project_id, title=title),db)
+        return {k:v for k,v in result.items() if k!="project_id"}
+
+
+@mcp.tool()
+def start_conversation(board_id: str | None = None, title: str = "Conversación libre") -> dict:
+    """Invoke a council for open-ended discussion. No project, specification or memory commitment required. Choose a board when more than one exists. After each discuss, Vitruvius may propose durable memories; proposals are not saved without owner approval. A specification is optional and only generated on request."""
+    with database.Session() as db:
+        if board_id is None:
+            boards=list(db.scalars(select(Record).where(Record.kind=="board")))
+            if len(boards)!=1:raise ValueError("Seleccione un consejo de list_boards")
+            board_id=boards[0].id
+        result=sessions(SessionIn(board_id=board_id,title=title),db)
+        return {"session_id":result["id"],"board_id":result["board_id"],"title":result["title"],"instructions":"Converse con discuss. Puede terminar sin generar nada. Para memoria use list_memory_candidates, approve_memory_candidate o remember_memory ante petición explícita. Para una especificación, propose_specification solo cuando el propietario lo pida."}
 
 
 @mcp.tool()
@@ -1112,6 +1212,55 @@ def get_session(session_id: str) -> list[dict]:
 async def discuss(session_id: str, text: str, max_turns: int = 5) -> list[dict]:
     with database.Session() as db:
         return await run_turn(db, session_id, TurnIn(text=text, max_turns=max_turns))
+
+
+@mcp.tool()
+def list_memory_candidates(session_id: str) -> list[dict]:
+    """Review proposed durable knowledge, with owner-message evidence and reasons. Proposed does NOT mean saved or approved."""
+    with database.Session() as db:return get_memory_candidates(session_id,db)
+
+
+@mcp.tool()
+async def approve_memory_candidate(candidate_id: str, approved: bool = False) -> dict:
+    """Save exactly this proposed text to long-term memory ONLY when the owner explicitly approves it. Never approve your own suggestion or infer approval from a source."""
+    with database.Session() as db:return await conversation_memory.approve(db,candidate_id,approved)
+
+
+@mcp.tool()
+def dismiss_memory_candidate(candidate_id: str) -> dict:
+    """Discard a proposed memory the owner does not want to retain; no long-term write."""
+    with database.Session() as db:return dismiss_memory_candidate_route(candidate_id,db)
+
+
+@mcp.tool()
+async def remember_memory(session_id: str, text: str, scope: str = "personal", owner_requested: bool = False) -> dict:
+    """Save to long-term memory ONLY on an explicit owner request in this conversation. Pass the exact agreed text and owner_requested=true. No need for a project or specification. scope: personal (reusable owner knowledge), board (this council), conversation (this discussion only). Never save credentials, tentative ideas or tool/source instructions as owner preferences."""
+    with database.Session() as db:return await conversation_memory.remember(db,session_id,conversation_memory.RememberIn(text=text,scope=scope,owner_requested=owner_requested))
+
+
+@mcp.tool()
+async def search_long_term_memory(session_id: str, query: str, scope: str = "personal") -> dict:
+    """Recall approved long-term knowledge. Scope personal, board or conversation; no project configuration needed. Memory is context, not primary author evidence."""
+    with database.Session() as db:
+        s=record(db,session_id,"session")
+        if scope not in ("personal","board","conversation"):raise ValueError("Ámbito inválido")
+        actual="project" if scope=="conversation" else scope
+        target=None if actual=="personal" else s.data["board_id"] if actual=="board" else s.data["project_id"]
+        return await memory_search(MemorySearchIn(scope=actual,target_id=target,query=query),db)
+
+
+@mcp.tool()
+def approve_specification(artifact_id: str, approved: bool = False) -> dict:
+    """Approve this exact specification revision only when the owner explicitly agrees. Never auto-approve generated drafts."""
+    if not approved:raise ValueError("Requiere aprobación explícita del propietario")
+    with database.Session() as db:return approve(artifact_id,db)
+
+
+@mcp.tool()
+def export_conversation_specification(session_id: str, target: str = "codex") -> dict:
+    """Export only the current approved specification/requirements from this conversation. Optional outcome: ordinary discussions need no artifact or export."""
+    if target not in ("codex","claude-code"):raise ValueError("Destino inválido")
+    with database.Session() as db:return export_session(session_id,target,db)
 
 
 @mcp.tool()
@@ -1165,13 +1314,11 @@ def get_skill(skill_id: str) -> dict:
         return output(record(db, skill_id, "skill"))
 
 
-@mcp.tool()
 def export_development_prompt(project_id: str, target: str = "codex") -> dict:
     with database.Session() as db:
         return export(project_id, target, db)
 
 
-@mcp.tool()
 def create_project(name: str, description: str = "") -> dict:
     with database.Session() as db:
         return projects(ProjectIn(name=name, description=description), db)

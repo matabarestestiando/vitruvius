@@ -257,6 +257,16 @@ class BoardRunner:
                                 memory.extend(r.json()["facts"])
                         except httpx.HTTPError:
                             pass
+            from .memory_recall import ledger_facts
+            approved_memory=[]
+            for group in ("vitruvius:personal:owner","vitruvius:project:"+self.session.data["project_id"],"vitruvius:board:"+self.session.data["board_id"],"vitruvius:expert:"+e.id):
+                approved_memory.extend(ledger_facts(self.db,group,query,limit=2))
+            selected_memory=[];memory_budget=12000
+            for item in approved_memory+memory:
+                size=len(json.dumps(item,ensure_ascii=False,default=str))
+                if size<=memory_budget:
+                    selected_memory.append(item);memory_budget-=size
+            memory=selected_memory
             tool_specs = []
             bindings = {}
             from .tools import remote, execute
@@ -403,7 +413,7 @@ class BoardRunner:
                 + (
                     "No hubo evidencia suficiente para continuar."
                     if available
-                    else "El consejo no tiene bibliotecas primarias revisadas disponibles en este proyecto. Configure el fundamento de cada panelista en Expertos; sus nombres y el conocimiento general del modelo no sustituyen las fuentes."
+                    else "El consejo no tiene bibliotecas primarias revisadas disponibles para esta conversación. Configure el fundamento de cada panelista en Expertos; sus nombres y el conocimiento general del modelo no sustituyen las fuentes."
                 )
             )
             self.db.add(

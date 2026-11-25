@@ -1,3 +1,16 @@
+# Estado actual: consejo y conversaciones libres
+
+- El propietario invoca al consejo desde un cliente MCP conectado. `start_conversation` no requiere proyecto. Se retiraron el menú y la creación de proyectos del portal, además de los antiguos tools MCP de configuración de proyectos. El chat del portal sigue eliminado.
+- Una conversación puede terminar sin artefactos. La especificación solo se genera a petición y su exportación exige aprobar la revisión actual de esa conversación.
+- Vitruvius evalúa declaraciones del propietario y propone recuerdos duraderos con razón y cita literal. No guarda automáticamente las propuestas. El propietario puede aprobarlas, descartarlas o pedir expresamente que se guarde un texto.
+- Las peticiones explícitas escriben en la memoria privada y conservan el texto aprobado como registro canónico recuperable. La búsqueda no depende de que Graphiti haya extraído relaciones de ese texto. El catálogo general no expone los textos de memoria.
+- Producción verificada: inicio sin proyecto; revisión real por modelo con propuesta sin escritura; consentimiento obligatorio; guardado real en Graphiti privado y recuperación del texto aprobado; especificación solicitada, aprobada y exportada; limpieza completa de datos sintéticos.
+- 69 pruebas backend y compilación frontend correctas. El procesamiento de carpetas conserva sus tres pruebas de navegador. Vista aislada del portal validada sin proyectos ni chat.
+- No se probó la conexión desde las cuentas particulares del propietario en Gemini, ChatGPT y Claude Code; cada cliente debe admitir MCP remoto y la autenticación existente. Actualice las herramientas del cliente para usar el nuevo recorrido.
+- Datos y asociaciones anteriores conservados. Los ámbitos internos de compatibilidad son privados por conversación y no son una configuración del producto. Véase CONVERSATION_MODEL.md.
+
+## Historial de despliegue anterior
+
 # Deployment status — 2026-11-25
 
 ## Operational prototype

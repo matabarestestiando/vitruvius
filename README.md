@@ -25,3 +25,7 @@ Expert names do not constitute evidence. The Board now requires reviewed primary
 ## Conversación en clientes y código local
 
 Las conversaciones se realizan desde clientes MCP compatibles conectados a Vitruvius; el portal ya no ofrece un chat. Para compartir un repositorio local, el cliente llama `prepare_local_repository` en su sesión, el propietario abre el enlace y autoriza una copia temporal desde el navegador. No configura rutas ni publica código privado. El consejo recibe fragmentos como contexto del caso y mantiene su requisito de fuentes primarias revisadas. Detalles, límites y compatibilidad en [docs/LOCAL_REPOSITORIES.md](docs/LOCAL_REPOSITORIES.md).
+
+## Current product model
+
+Invoke the council with `start_conversation` from a connected MCP client. No project is required. Discuss freely; a specification is optional and only generated on request. Vitruvius proposes durable owner knowledge without silently saving it; approve a candidate or explicitly request `remember_memory`. The portal has no project or chat menu. See [docs/CONVERSATION_MODEL.md](docs/CONVERSATION_MODEL.md).

@@ -30,7 +30,7 @@ class SkillIn(BaseModel):
 
 class SessionIn(BaseModel):
     board_id: str
-    project_id: str
+    project_id: str | None = None
     title: str = Field(default="Nueva discusión", max_length=200)
 
 

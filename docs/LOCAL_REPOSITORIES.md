@@ -4,7 +4,7 @@ The portal has no conversation menu, chat composer, or chat testing entry point.
 
 ## Workflow
 
-1. Client calls `list_projects` / `list_boards`, then `create_session`, or reuses `list_sessions` and the existing session.
+1. Client calls `start_conversation` (no project required), or reuses `list_sessions` and the existing conversation.
 2. At the owner's request, call `prepare_local_repository(session_id)` and present its URL. This does not read the computer or upload files. The URL contains only the session ID and grants no access.
 3. Owner opens the link on the computer with the code, signs in with their owner token if required, and selects a folder in the browser. `webkitdirectory` offers broad browser compatibility and grants no write capability. Never ask for the owner token in a conversation.
 4. Owner reviews the eligible relative paths, optionally deselects files, grants explicit consent, and clicks Share temporary copy. Selection alone performs no upload. No Git account, mount, local daemon or filesystem permission in the external client is needed.
