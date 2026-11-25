@@ -14,7 +14,7 @@ def test_snapshot_scopes_and_filters(monkeypatch):
     def api(path):
         seen.append(path)
         if '/commits/' in path:return {'sha':'a'*40}
-        if '/trees/' in path:return {'tree':[{'type':'blob','mode':'100644','path':p,'sha':'b'*40,'size':20} for p in ['README.md','.env','credentials.txt','app/main.py','secrets.json']]+[{'type':'blob','mode':'120000','path':'link.py','sha':'b'*40,'size':20}], 'truncated':True}
+        if '/trees/' in path:return {'tree':[{'type':'blob','mode':'100644','path':p,'sha':'b'*40,'size':20} for p in ['README','.env','credentials.txt','app/main.py','secrets.json']]+[{'type':'blob','mode':'120000','path':'link.py','sha':'b'*40,'size':20}], 'truncated':True}
         return {'content':base64.b64encode(b'real code').decode()}
     monkeypatch.setattr(r,'github_json',api)
     out=r.snapshot('Revise https://github.com/org/repo.git')
