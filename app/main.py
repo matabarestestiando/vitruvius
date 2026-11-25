@@ -579,13 +579,19 @@ async def run_turn(db, id, data):
                 .order_by(Message.created_at)
             )
         ][-60:]
-        transcript.append({"speaker": "Propietario", "content": data.text})
-        db.add(
+        from .conversation_control import retry_owner_message, social_reply
+        retry=retry_owner_message(db,id,data)
+        if not retry:transcript.append({"speaker": "Propietario", "content": data.text})
+        if not retry:db.add(
             Message(
                 session_id=id, speaker="Propietario", content=data.text, citations=attached
             )
         )
         db.commit()
+        greeting=social_reply(data.text) if not data.attachment_ids else None
+        if greeting:
+            db.add(Message(session_id=id,speaker="Moderador",content=greeting,citations=[]));db.commit()
+            return messages(id,db)
         from .conversation_memory import explicit_command, remember, RememberIn
         requested_memory=explicit_command(data.text)
         if requested_memory:
@@ -692,6 +698,7 @@ async def stream_turn(id: str,data:TurnIn,request:Request,db:DB=D):
     record(db,id,"session")
     from .chat_media import attachment_citations
     attachment_citations(db,id,data.attachment_ids)
+    initial_ids={m["id"] for m in messages(id,db)}
     async def events():
         async def execute_turn():
             with database.Session() as active_db:return await run_turn(active_db,id,data)
@@ -713,8 +720,18 @@ async def stream_turn(id: str,data:TurnIn,request:Request,db:DB=D):
             yield 'event: done\ndata: {}\n\n'
         except asyncio.CancelledError:
             task.cancel()
-        except Exception:
-            yield 'event: error\ndata: {"message":"La respuesta no pudo completarse. Las intervenciones verificadas quedaron en el historial."}\n\n'
+        except Exception as exc:
+            import logging
+            incident=str(uuid4())
+            cause=exc.__context__ or exc
+            logging.getLogger("vitruvius.chat").warning("chat_turn_failed incident=%s session=%s type=%s",incident,id,type(cause).__name__)
+            with database.Session() as read_db:history=messages(id,read_db)
+            owner=next((m for m in reversed(history) if m["speaker"]=="Propietario" and m["content"]==data.text and (m["id"] not in initial_ids or m["id"]==data.retry_message_id)),None)
+            retry_id=owner["id"] if owner and history[-1]["id"]==owner["id"] else None
+            message=("No pude completar la respuesta. Su pregunta quedó guardada; puede reintentar sin enviarla otra vez." if retry_id else "La respuesta se interrumpió. Puede consultar lo recibido y continuar la conversación." if owner else "No se pudo iniciar la consulta. Su borrador sigue disponible.")
+            if isinstance(exc,HTTPException) and exc.status_code in {409,410,422,503}:message=str(exc.detail)
+            yield 'event: error\ndata: '+json.dumps({"message":message,"incident_id":incident,"retry_message_id":retry_id},ensure_ascii=False)+'\n\n'
+
         finally:
             if not task.done():task.cancel()
             try:await task

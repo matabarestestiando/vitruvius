@@ -1,3 +1,17 @@
+## Corrección del fallo de conversación — 25 de noviembre de 2026
+
+Se investigó el incidente real de la conversación «Hola». El checkpoint guardó ValueError por selección de experto inválido en el moderador, con cero intervenciones en esa consulta. El aviso anterior afirmaba erróneamente que habían quedado intervenciones verificadas de esa ejecución.
+
+El moderador valida tipos e identificadores; acepta un nombre solo si corresponde exactamente a un experto elegible único, reintenta una decisión inválida y recupera el enrutamiento entre expertos con fuentes revisadas. La recuperación no aporta afirmaciones técnicas: siguen siendo obligatorios la recuperación documental, el cotejo literal y la revisión semántica.
+
+Se añadieron saludos sin inferencia técnica, errores con estado real de guardado, diagnóstico por identificador/tipo sin registrar contenido sensible y reintento de la última pregunta sin respuesta. El reintento comprueba conversación, autor, texto, adjuntos y ausencia de intervenciones posteriores; reutiliza el mensaje existente. El navegador recupera esa opción al reabrir la conversación y vacía el borrador cuando el envío fue aceptado. El chat limita cada ejecución a dos intervenciones; puede continuarse con otra pregunta.
+
+La comprobación posterior de idioma también pasó con una explicación en español y tres citas; el saludo respondió en 0,12 segundos en esa prueba. La pregunta original se reintentó desde el navegador en su misma conversación: sigue registrada una sola vez y obtuvo una respuesta de Gulli con tres citas de Agentic Design Patterns, páginas 241 y 440. Lanham se abstuvo; no se presenta esa abstención como respuesta verificada. Las intervenciones antiguas se conservan como historial.
+
+Se añadió traducción de la prosa de las afirmaciones para consultas en español: no cambia citas, identificadores ni tipo de afirmación y se aplica antes de la revisión semántica contra los originales. Las citas permanecen en su idioma original.
+
+Verificación automatizada: 91 pruebas del servidor y 4 del cliente, incluida selección inválida de moderador, recuperación sin publicar afirmaciones no verificadas, saludo sin evasión de consultas técnicas, aislamiento y reutilización del mensaje pendiente, error de stream sin divulgación de diagnósticos y preservación de evidencia durante la traducción. Compilación de producción y reintento visual real completados. Se limpiaron únicamente sesiones temporales de diagnóstico y sus propuestas de memoria, sin borrar la conversación del propietario ni sus libros.
+
 ## Actualización: chat nativo — 25 de noviembre de 2026
 
 Por decisión posterior del propietario, Chat vuelve a ser la entrada principal. Ya no es necesario configurar Gemini, Claude o ChatGPT para conversar en Vitruvius. MCP sigue disponible como alternativa. Se mantienen conversaciones sin proyecto y resultados opcionales de memoria/especificación.

@@ -143,19 +143,27 @@ class BoardRunner:
             }
             if not identities:
                 return {"done": True}
-            answer = json.loads(
-                await self.complete(
-                    "Eres el moderador. Decide dinámicamente quién debe responder al debate; permite objeciones, réplicas y preguntas al propietario. "
-                    "Responde JSON {next_speaker: ID válido, done: boolean}. Si falta información, permite que un experto pregunte y termina después. "
-                    "No sigas un orden fijo. Expertos: " + json.dumps(identities),
-                    state["transcript"],
-                    structured=True,
-                )
+            from .conversation_control import routing_decision
+            from .observability import event
+            system=(
+                "Eres el moderador. Decide dinámicamente quién debe responder al debate; permite objeciones, réplicas y preguntas al propietario. "
+                "Responde JSON {next_speaker: ID, done: boolean}. next_speaker debe ser EXACTAMENTE una clave ID de la lista, nunca un nombre ni Propietario. "
+                "Si un experto debe preguntar al propietario, selecciona el ID de ese experto: él redactará la pregunta. "
+                "No termines por abstenciones de turnos anteriores: considera la última pregunta del propietario. No sigas un orden fijo. Expertos: "+json.dumps(identities)
             )
-            speaker = answer.get("next_speaker", "")
-            if not answer.get("done") and speaker not in identities:
-                raise ValueError("Moderador seleccionó experto inválido")
-            return {"next_speaker": speaker, "done": bool(answer.get("done", False))}
+            for attempt in range(2):
+                try:
+                    raw=await self.complete(system+(" Copia un ID de la lista literalmente; la selección anterior fue inválida." if attempt else ""),state["transcript"],structured=True)
+                    decision=routing_decision(raw,identities)
+                    if decision["done"] and state["turns"]==0:break
+                    return decision
+                except (ValueError,TypeError):
+                    continue
+            # Recover routing only. The selected expert must still retrieve and verify evidence.
+            used={id:sum(m.get("speaker")==identity["name"] for m in state["transcript"]) for id,identity in identities.items()}
+            speaker=min(identities,key=lambda id:used[id])
+            event("moderator_route_recovered",session_id=self.session.id,expert_id=speaker)
+            return {"done":False,"next_speaker":speaker}
 
         async def discuss(state):
             e = self.experts[state["next_speaker"]]
@@ -345,6 +353,7 @@ class BoardRunner:
                 f"Eres un analista virtual de {e.data['specialty']}, identificado en el consejo como {e.data['name']}. No eres esa persona ni conoces sus opiniones privadas. "
                 "SOLO puedes emitir afirmaciones técnicas sustentadas en los fragmentos proporcionados. No uses conocimiento previo del modelo como evidencia. "
                 "No atribuyas una opinión al panelista real. El autor de cada documento es independiente del nombre del panelista. "
+                "Responde en el idioma de la última pregunta del propietario. Contesta primero la pregunta concreta con una explicación breve y natural; no pegues párrafos en inglés como respuesta a una pregunta en español. Traduce las afirmaciones text cuando corresponda, pero conserva las citas quote en el idioma original de la fuente. "
                 "Distingue lo que afirma la fuente (kind=source) de tus propuestas derivadas (kind=inference). Las inferencias requieren premisas citadas y deben ser compatibles con ellas. "
                 "Devuelve JSON estricto: {claims:[{text:string,kind:'source'|'inference',evidence:[{chunk_id:string,quote:string}]}]}. "
                 "El campo text puede contener Markdown con listas, tablas y bloques de código. Si el propietario pide un diagrama, use un bloque ```mermaid con un diagrama sencillo, cuyos elementos sean compatibles con la evidencia citada. No invente referencias ni imágenes externas. Las descripciones visuales automáticas son interpretaciones no verificadas del caso; no las presente como observaciones ciertas ni fundamento del autor. "
@@ -378,6 +387,9 @@ class BoardRunner:
                         **({"tool_specs": tool_specs, "dispatch": dispatch} if tool_specs else {}),
                     )
                     answer = GroundedAnswer.model_validate_json(raw)
+                    validate_evidence(answer,sources,primary_ids)
+                    from .claim_language import localize_claims
+                    answer=await localize_claims(self.complete,answer,query)
                     citations = await review_answer(self.complete, answer, sources, primary_ids, question=query)
                     output = render_answer(answer)
                     break

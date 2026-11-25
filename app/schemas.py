@@ -36,6 +36,7 @@ class SessionIn(BaseModel):
 
 
 class TurnIn(BaseModel):
+    retry_message_id: str | None = Field(default=None,max_length=80)
     attachment_ids: list[str] = Field(default_factory=list,max_length=12)
     text: str = Field(min_length=1, max_length=24000)
     max_turns: int = Field(default=5, ge=1, le=12)

@@ -18,3 +18,7 @@ No se requiere comprar un componente de chat. Se utilizan Vue/Vuetify existentes
 Pruebas del servidor: aislamiento y expiración de adjuntos, autenticación, subconjunto de expertos, validación de imágenes, generación con almacenamiento privado y prohibición de promover imágenes a bibliografía. Prueba del lector de eventos con UTF-8 dividido por byte y corte de conexión. Compilación de producción y revisión visual de Markdown, etiquetas Mermaid y selección/retiro de archivos.
 
 Las pruebas visuales locales usan datos sintéticos explícitamente identificados; no se presentan como libros o respuestas reales de los autores.
+
+## Recuperación de preguntas
+
+Al abrir una conversación cuya última pregunta no tiene respuesta, aparece «Reintentar respuesta». Reutiliza esa pregunta y sus adjuntos; no la vuelve a registrar. Si ya existen intervenciones posteriores, debe continuarse con un nuevo mensaje. Una selección inválida del moderador se recupera sin omitir la verificación documental. Los saludos puros reciben una bienvenida sin consultar los libros. Para consultas en español se localiza la prosa antes de revisarla contra las fuentes, conservando las citas originales.
