@@ -547,6 +547,12 @@ async def run_turn(db, id, data):
             )
         )
         db.commit()
+        from .chat_repositories import snapshot
+        repository_context = await asyncio.to_thread(snapshot, data.text)
+        if repository_context:
+            transcript.append({"speaker": "Contexto del repositorio", "content": repository_context})
+            db.add(Message(session_id=id, speaker="Contexto del repositorio", content=repository_context, citations=[]))
+            db.commit()
         from .board import BoardRunner
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
