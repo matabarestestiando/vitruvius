@@ -1,5 +1,12 @@
 # Estado actual: consejo y conversaciones libres
 
+## Corrección del autor del experto
+
+Corregida la errata inicial «Micheal Lanham» por «Michael Lanham» en el experto existente y en los datos iniciales. Se conservan su identificador, métodos, fuentes y asociaciones. El comparador bibliográfico no se ha flexibilizado: obras de otros autores siguen sin poder sustituir su fundamento primario.
+
+La revisión de autoría del propietario ya estaba registrada; se reintentó únicamente la habilitación primaria de AI Agents in Action (Second Edition), que había fallado por esa errata, y pasó correctamente. 78 pruebas backend y comprobación real de la habilitación mediante API autenticada.
+
+
 ## Recuperación de tareas pendientes
 
 Se recuperó el tercer libro, AI Agents in Action (Second Edition), desde el objeto privado ya existente: ready con 392 páginas y 590/590 fragmentos indexados. Su entrega anterior no figuraba en la cola ni entre los trabajos activos/reservados. No se volvió a subir el archivo ni se aprobaron sus fuentes automáticamente.
@@ -32,7 +39,7 @@ Corregida la configuración de iconos: casillas, estados y selectores usan SVG i
 - Vitruvius evalúa declaraciones del propietario y propone recuerdos duraderos con razón y cita literal. No guarda automáticamente las propuestas. El propietario puede aprobarlas, descartarlas o pedir expresamente que se guarde un texto.
 - Las peticiones explícitas escriben en la memoria privada y conservan el texto aprobado como registro canónico recuperable. La búsqueda no depende de que Graphiti haya extraído relaciones de ese texto. El catálogo general no expone los textos de memoria.
 - Producción verificada: inicio sin proyecto; revisión real por modelo con propuesta sin escritura; consentimiento obligatorio; guardado real en Graphiti privado y recuperación del texto aprobado; especificación solicitada, aprobada y exportada; limpieza completa de datos sintéticos.
-- 77 pruebas backend y compilación frontend correctas. El procesamiento de carpetas conserva sus tres pruebas de navegador. Vista aislada del portal validada sin proyectos ni chat.
+- 78 pruebas backend y compilación frontend correctas. El procesamiento de carpetas conserva sus tres pruebas de navegador. Vista aislada del portal validada sin proyectos ni chat.
 - No se probó la conexión desde las cuentas particulares del propietario en Gemini, ChatGPT y Claude Code; cada cliente debe admitir MCP remoto y la autenticación existente. Actualice las herramientas del cliente para usar el nuevo recorrido.
 - Datos y asociaciones anteriores conservados. Los ámbitos internos de compatibilidad son privados por conversación y no son una configuración del producto. Véase CONVERSATION_MODEL.md.
 

@@ -8,11 +8,19 @@ NAMES = [
     ("Daniel Chalef", "Memoria de agentes"),
     ("Martin Kleppmann", "Sistemas distribuidos"),
     ("Cathy Pearl", "Diseño conversacional"),
-    ("Micheal Lanham", "Implementación de agentes"),
+    ("Michael Lanham", "Implementación de agentes"),
 ]
 
 
 def seed(db):
+    # Correct the shipped spelling without broadening bibliographic author matching.
+    for expert in db.scalars(select(Record).where(Record.kind == "expert")):
+        if expert.data.get("name") == "Micheal Lanham" and expert.data.get("specialty") == "Implementación de agentes":
+            corrected={**expert.data,"name":"Michael Lanham"}
+            if corrected.get("inspiration_author") == "Micheal Lanham":
+                corrected["inspiration_author"]="Michael Lanham"
+            expert.data=corrected
+    db.commit()
     if db.scalar(select(Record).where(Record.kind == "board")):
         return
     experts = []
