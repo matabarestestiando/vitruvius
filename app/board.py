@@ -74,14 +74,17 @@ class BoardRunner:
             },
         ]
         for _ in range(4):
-            r = await self.client.chat.completions.create(
-                model=model or settings.model,
-                messages=messages,
-                max_tokens=1800,
-                temperature=0.4,
-                **kwargs,
-                **({"tools": tool_specs} if tool_specs else {}),
-            )
+            try:
+                r = await self.client.chat.completions.create(
+                    model=model or settings.model,
+                    messages=messages,
+                    max_tokens=1800,
+                    temperature=0.4,
+                    **kwargs,
+                    **({"tools": tool_specs} if tool_specs else {}),
+                )
+            except Exception:
+                raise RuntimeError("OpenRouter request failed") from None
             from langsmith.run_helpers import get_current_run_tree
 
             run = get_current_run_tree()
