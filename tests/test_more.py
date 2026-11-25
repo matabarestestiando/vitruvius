@@ -212,3 +212,38 @@ def test_curated_memory_tracks_and_deletes_episode(
     assert len(events) == 1 and "approved synthetic decision" not in str(events)
     assert client.delete("/api/memories/" + rid, headers=headers).status_code == 200
     assert len(calls) == 2
+
+
+def test_actual_git_intelligence_excludes_tracked_secrets(tmp_path, monkeypatch):
+    import subprocess
+    from types import SimpleNamespace
+    from app import repositories
+
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "safe.py").write_text("def synthetic_example(): return 1\n")
+    (root / ".env").write_text("SYNTHETIC_SECRET=excluded\n")
+
+    def git(*args):
+        return subprocess.run(
+            ["git", "-C", str(root), *args], check=True, capture_output=True, text=True
+        )
+
+    git("init")
+    git("add", "safe.py", ".env")
+    git(
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "synthetic fixture",
+    )
+    monkeypatch.setattr(
+        repositories, "settings", SimpleNamespace(repo_root=str(tmp_path))
+    )
+    result = repositories.inspect(str(root), "synthetic_example")
+    assert len(result["commit"]) == 40
+    assert result["results"][0]["path"] == "safe.py"
+    assert repositories.inspect(str(root), "SYNTHETIC_SECRET")["results"] == []

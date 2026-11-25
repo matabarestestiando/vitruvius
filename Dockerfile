@@ -7,6 +7,7 @@ RUN npm run build
 FROM python:3.12-slim
 COPY --from=ghcr.io/astral-sh/uv:0.7.5 /uv /usr/local/bin/uv
 WORKDIR /srv
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml uv.lock ./
 ARG DOCUMENTS=0
 RUN if [ "$DOCUMENTS" = "1" ]; then uv sync --frozen --no-dev --extra documents; else uv sync --frozen --no-dev; fi

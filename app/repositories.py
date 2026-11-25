@@ -50,7 +50,7 @@ def safe_file(root, path):
 def inspect(path, query="", file=None):
     p = repository(path)
     commit = subprocess.run(
-        ["git", "-c", "core.fsmonitor=false", "-C", str(p), "rev-parse", "HEAD"],
+        ["git", "-c", "safe.directory="+str(p), "-c", "core.fsmonitor=false", "-C", str(p), "rev-parse", "HEAD"],
         check=True,
         capture_output=True,
         text=True,
@@ -68,7 +68,7 @@ def inspect(path, query="", file=None):
     # Only tracked files. No hooks, checkout, fetch, shell, build or repository commands are executed.
     tracked = (
         subprocess.run(
-            ["git", "-c", "core.fsmonitor=false", "-C", str(p), "ls-files", "-z"],
+            ["git", "-c", "safe.directory="+str(p), "-c", "core.fsmonitor=false", "-C", str(p), "ls-files", "-z"],
             check=True,
             capture_output=True,
             timeout=10,

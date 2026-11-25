@@ -25,7 +25,7 @@
 | Implementation Reviewer | Read-only repository evidence compared to approved artifacts, bounded findings, no invented test execution. |
 | MCP inbound | Standard Streamable HTTP; shared session tools, project/session creation, contextual text, presigned temporary upload and draft/export. |
 | MCP outbound and tool permissions | Origin allowlist, discovery, per-expert read/write permissions. Writes become owner-reviewable exact-argument requests and one-use approvals. |
-| Observability and evaluation | Sanitized LangSmith model/token/session metadata and operation events; 17 deterministic automated tests plus live integration checks. |
+| Observability and evaluation | Sanitized LangSmith model/token/session metadata and operation events; 18 deterministic automated tests plus live integration checks. |
 | Context Management Engine | SESSION default/24h, REQUEST expiry, all six scopes, expert restrictions, configurable retention, explicit promotion, deletion of originals/chunks/vectors, repeat-deletion tombstones and cross-client continuity. |
 | Multimodal extension | Future scope preserved; no claim of audio/video/podcast processing. |
 
@@ -33,7 +33,7 @@ Docling runs in the production worker with CPU-only PyTorch, two threads, one co
 
 ## Verification evidence
 
-- 15 main-service automated tests, 2 memory-service automated tests passed. These include authentication, context isolation/expiry/promotion/deletion, approval-gated export, repository traversal and sensitive-file exclusion, skill versions/import, exact write-tool approvals, dynamic graph routing, MCP protocol, bounded context and curated-memory episode tracking/deletion.
+- 16 main-service automated tests, 2 memory-service automated tests passed. These include authentication, context isolation/expiry/promotion/deletion, approval-gated export, repository traversal and sensitive-file exclusion, skill versions/import, exact write-tool approvals, dynamic graph routing, MCP protocol, bounded context and curated-memory episode tracking/deletion.
 - Vue/Vuetify production build passed. Visual portal review checked the council, decision and context controls at mobile and desktop layout breakpoints.
 - Full live synthetic run passed: pgvector embedding → dynamic Board → shared MCP history → generated draft → approval → handoff → Spaces upload → worker → deletion → Graphiti ingestion/search/isolation → session/history/checkpoint deletion.
 - Graphiti relation check extracted 4 nodes and 3 edges, returned 3 facts and returned no facts in another namespace. Synthetic episodes were deleted.
