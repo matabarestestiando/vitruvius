@@ -151,10 +151,15 @@ def catalog(db: DB = D):
     result["memory_candidate"]=[{k:v for k,v in c.items() if k not in ("text","reason","evidence")} for c in candidates(db)]
     result["memory_event"]=[{k:v for k,v in e.items() if k not in ("text","evidence")} for e in result["memory_event"]]
 
+    from .processing import read_many
+    progress=read_many([d["id"] for d in result["context"] if d.get("status")=="queued"])
+    for doc in result["context"]:
+        if doc.get("status")=="queued":doc["processing"]=progress.get(doc["id"],{"stage":"waiting","label":"Esperando turno"})
     for ref in result.get("reference", []):
         doc = db.get(Record, ref.get("document_id")) if ref.get("document_id") else None
         if doc and doc.kind == "context":
             ref["content_status"] = doc.data.get("status")
+            if doc.data.get("status")=="queued":ref["content_progress"]=progress.get(doc.id,{"stage":"waiting","label":"Esperando turno"})
             ref["content_available"] = doc.data.get("status") == "ready"
             ref["source_reviewed"] = bool(
                 (doc.data.get("source") or {}).get("reviewed_by_owner")
@@ -714,6 +719,8 @@ def finalize(id: str, db: DB = D):
     db.commit()
     from .worker import ingest
 
+    from .processing import Progress
+    Progress(id)("waiting")
     ingest.delay(id)
     return {"status": "queued"}
 

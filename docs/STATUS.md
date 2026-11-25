@@ -1,5 +1,14 @@
 # Estado actual: consejo y conversaciones libres
 
+## Procesamiento de libros y avance real
+
+Los PDF con texto digital se extraen primero con pypdf conservando el número de página; Docling se mantiene para el análisis de diseño cuando no se detecta texto en la muestra inicial o se solicita PDF_EXTRACTION_MODE=layout. No se activa OCR ni se simula lectura de imágenes. Se registran páginas leídas, páginas sin texto y método de extracción. El texto nativo puede representar tablas sin su estructura de diseño; consulte el PDF original para verificarlas.
+
+La interfaz distingue espera, lectura de páginas, análisis de diseño y preparación de búsquedas. Los contadores se publican en Redis sin contenido del documento y fuera de la transacción atómica del corpus. La pérdida de telemetría no hace fallar la carga. La extracción y los embeddings siguen siendo atómicos; la reejecución borra fragmentos parciales dentro de la misma transacción. Celery confirma después de completar y permite redelivery si se pierde el worker. Los fallos controlados conservan el estado failed.
+
+Verificación real: Agentic Design Patterns quedó ready con 518/518 fragmentos indexados; building ai agents se retomó desde su objeto privado existente, leyó 340/340 páginas con texto y quedó ready con 391/391 fragmentos indexados. No se volvió a subir ningún archivo ni se aprobó su autoría o uso por el experto automáticamente. 74 pruebas backend correctas y frontend compilado.
+
+
 ## Carga de libros simplificada
 
 La navegación muestra Biblioteca. La acción principal «Añadir libro o contenido» abre un recorrido de archivo primero y datos después: seleccionar PDF, confirmar título/autor y autorización, cargar. No se muestran dos formularios ni se exige registrar una referencia como tarea separada. Los registros existentes sin contenido ofrecen «Cargar PDF». La carga se puede retomar con una URL renovada y la misma clave privada; solo se permite para documentos pendientes/fallidos no revisados, nunca para sustituir fuentes procesadas o revisadas.
@@ -14,7 +23,7 @@ Corregida la configuración de iconos: casillas, estados y selectores usan SVG i
 - Vitruvius evalúa declaraciones del propietario y propone recuerdos duraderos con razón y cita literal. No guarda automáticamente las propuestas. El propietario puede aprobarlas, descartarlas o pedir expresamente que se guarde un texto.
 - Las peticiones explícitas escriben en la memoria privada y conservan el texto aprobado como registro canónico recuperable. La búsqueda no depende de que Graphiti haya extraído relaciones de ese texto. El catálogo general no expone los textos de memoria.
 - Producción verificada: inicio sin proyecto; revisión real por modelo con propuesta sin escritura; consentimiento obligatorio; guardado real en Graphiti privado y recuperación del texto aprobado; especificación solicitada, aprobada y exportada; limpieza completa de datos sintéticos.
-- 71 pruebas backend y compilación frontend correctas. El procesamiento de carpetas conserva sus tres pruebas de navegador. Vista aislada del portal validada sin proyectos ni chat.
+- 74 pruebas backend y compilación frontend correctas. El procesamiento de carpetas conserva sus tres pruebas de navegador. Vista aislada del portal validada sin proyectos ni chat.
 - No se probó la conexión desde las cuentas particulares del propietario en Gemini, ChatGPT y Claude Code; cada cliente debe admitir MCP remoto y la autenticación existente. Actualice las herramientas del cliente para usar el nuevo recorrido.
 - Datos y asociaciones anteriores conservados. Los ámbitos internos de compatibilidad son privados por conversación y no son una configuración del producto. Véase CONVERSATION_MODEL.md.
 

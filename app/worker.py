@@ -14,6 +14,8 @@ celery.conf.update(
     accept_content=["json"],
     result_serializer="json",
     task_ignore_result=True,
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
     beat_schedule={"expire-context": {"task": "context.expire", "schedule": 60.0}},
 )
 
@@ -41,7 +43,13 @@ def ingest(document_id):
         )
         if not doc or doc.kind != "context" or doc.data["status"] != "queued":
             return
+        from .processing import Progress,extract_for_ingestion
+        progress=Progress(document_id)
         try:
+            progress("downloading")
+            # A retry never accumulates duplicate excerpts from an interrupted extraction.
+            from sqlalchemy import delete
+            db.execute(delete(Chunk).where(Chunk.document_id==document_id))
             s3 = spaces()
             obj = s3.get_object(
                 Bucket=settings.spaces_bucket, Key=doc.data["object_key"]
@@ -66,7 +74,7 @@ def ingest(document_id):
                         for block in obj["Body"].iter_chunks(chunk_size=1024 * 1024):
                             stream.write(block)
                     any_text = False
-                    for page, value in extract(path, doc.data["content_type"]):
+                    for page, value in extract_for_ingestion(path, doc.data["content_type"],progress,fallback=extract):
                         if value.strip():
                             any_text = True
                         for i in range(0, len(value), 2400):
@@ -83,11 +91,12 @@ def ingest(document_id):
                         raise ValueError(
                             "El documento no tiene texto extraíble; OCR sigue desactivado"
                         )
-                    asyncio.run(index_document(db, doc, commit=False))
+                    asyncio.run(index_document(db, doc, commit=False,progress=lambda done,total:progress("indexing",chunks_done=done,chunks_total=total)))
             finally:
                 obj["Body"].close()
-            doc.data = {**doc.data, "status": "ready"}
+            doc.data = {**doc.data, "status": "ready", "processing_summary":dict(progress.state)}
             db.commit()
+            progress("ready")
         except Exception:
             db.rollback()
             doc = db.get(Record, document_id)
@@ -98,3 +107,4 @@ def ingest(document_id):
                     "error": "No se pudo procesar el documento. Revise el formato, texto extraíble, recursos disponibles y configuración.",
                 }
                 db.commit()
+                progress("failed")

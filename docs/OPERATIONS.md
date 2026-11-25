@@ -33,3 +33,11 @@ Run `uv run pytest -q` in each repository and `npm ci && npm run build` in front
 Enable and verify DigitalOcean managed DB backups and droplet backups; not assumed active. Back up Neo4j with a consistent dump while stopped (or supported online backup for the chosen edition). Redis is a queue, not the authoritative data store. Document restore and test before relying on backups. No backup job has been claimed installed by the application.
 
 Rollback by restoring the previous source/image and recreating services without `down -v`; never remove volumes. Future schema migrations need a tested rollback/forward strategy. Record service/image IDs, health observations and unresolved issues in STATUS.md. Avoid dumping logs that might contain third-party errors with request bodies.
+
+## Document processing progress
+
+Digital PDFs now use native text first, retaining page numbers. Docling CPU remains the layout fallback. Set PDF_EXTRACTION_MODE=layout in the worker environment when explicit layout analysis is desired; default auto prioritizes native text when present in the initial sample. OCR remains off. Source readability and table interpretation still require human review.
+
+The worker publishes content-free Redis progress with a two-hour TTL, throttled to once per second except phase changes. Catalog responses project it onto queued references. The ingestion transaction commits ready only after every embedding has been written. Confirm corpus counts rather than inferring completion from a progress percentage.
+
+Use a warm/graceful worker stop for deployments. New tasks use late acknowledgements and reject-on-worker-loss to permit safe redelivery; completed document guards and atomic chunk replacement make reexecution idempotent. Older tasks accepted before this setting may need explicit requeue from the existing private object after a controlled stop. Never requeue a ready document or auto-approve its source library.

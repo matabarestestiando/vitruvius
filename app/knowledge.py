@@ -103,7 +103,11 @@ async def embed(value):
     return vectors[0]
 
 
-async def index_document(db, doc, commit=True):
+async def index_document(db, doc, commit=True, progress=None):
+    from sqlalchemy import func
+    total=db.scalar(select(func.count(Chunk.id)).where(Chunk.document_id==doc.id)) if progress else 0
+    completed=0
+    if progress:progress(0,total)
     last_id = ""
     while True:
         chunks = list(
@@ -128,6 +132,8 @@ async def index_document(db, doc, commit=True):
                 )
         last_id = chunks[-1].id
         db.flush()
+        completed+=len(chunks)
+        if progress:progress(completed,total)
     if commit:
         db.commit()
 
