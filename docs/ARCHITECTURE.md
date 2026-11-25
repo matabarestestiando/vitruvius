@@ -34,3 +34,7 @@ Artifacts are immutable revisions. Approval binds to the content SHA256 and revi
 ## Data model and extensibility
 
 PostgreSQL `records` stores typed entity payloads; `messages`, `chunks`, `approvals` have relational foreign keys. pgvector column is 1536-dimensional (explicit model contract); JSON vectors support tests, cosine HNSW supports production. Initial schema setup is idempotent; future changes need versioned migrations. MCP, memory and object-storage adapters separate services. Group IDs are validated by the memory API and deterministically hashed for Graphiti's restricted namespace alphabet.
+
+## Local snapshot access from external clients
+
+Conversations live in external MCP clients; the administrative portal has no chat UI. Session-scoped code snapshots are `local_repository` records with file digests, explicit owner consent and expiry. The folder picker never requests write access; uploads are authenticated and filtered on both client and server. MCP tools list/search/read only the current session's unexpired shared text. Grounded council retrieval includes actual line excerpts as provided case context, not expert foundation. Cleanup is shared with existing scheduled retention; session deletion purges snapshots. See LOCAL_REPOSITORIES.md for bounded reads, physical deletion semantics and per-client compatibility limits.

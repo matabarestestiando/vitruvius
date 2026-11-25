@@ -55,12 +55,10 @@ Docling runs in the production worker with CPU-only PyTorch, two threads, one co
 The previous ungrounded opinion behavior is disabled. Experts need reviewed primary libraries, retrieved exact quotations and claim review. References, extracted content and reviewed foundations are separate states. Professional profiles remain drafts until owner approval. X/YouTube URLs alone are not ingested evidence. The 20 MiB upload limit has been removed across the pipeline. See GROUNDING.md for behavior, retained operational limits and validation.
 
 
-## Conversación como recorrido principal
-- Navegación principal reducida a proyectos, conversación y biblioteca de expertos. Memoria, documentos, skills y conexiones opcionales bajo herramientas avanzadas.
-- Crear/seleccionar un proyecto abre conversación; el primer mensaje crea la sesión. Selectores secundarios plegados.
-- Acuerdos y entrega se abren desde una charla con historial; explicación de requisitos y decisiones, revisión y aprobación conservadas.
-- Repositorios salen del panel. Un enlace raíz HTTPS de GitHub en un turno dispara lectura pública sin credenciales, limitada a índice y cuatro fragmentos del commit fijado. Solo contexto del caso, no evidencia de autor. No clona, escribe ni ejecuta código.
-- Repositorios privados y otros proveedores: integración de acceso pendiente; mensaje explícito de acceso no disponible, nunca se presenta como analizado. No se amplió acceso a credenciales ni conexiones del propietario.
-- Límite de lectura inicial: hasta cuatro archivos de 80 KB (primeros 1600 caracteres), muestra de 35 rutas, índice truncado indicado; cada enlace nuevo solicita otra lectura. No promete una revisión completa ni navegación autónoma por todo el código.
-- Validación: 41 pruebas backend, compilación frontend y recorrido visual local aislado.
-- API pública de GitHub documentada en https://docs.github.com/en/rest/git/trees y https://docs.github.com/en/rest/git/blobs
+## Conversaciones desde clientes; repositorios locales
+
+El portal ya no tiene chat ni menú Conversación. Claude, ChatGPT o Gemini conectado a MCP mantiene la conversación; el portal administra fuentes, expertos y acuerdos y abre la selección de carpeta a petición del cliente.
+
+`prepare_local_repository` devuelve un enlace autenticado al propietario para la sesión. La carpeta se selecciona en el navegador y se comparte explícitamente como copia temporal de 24 horas. El mismo cliente puede listar, buscar y leer el código real; `discuss` lo incorpora como contexto del caso, sin sustituir las fuentes del experto. Las copias se pueden desconectar y vencen incluso si el worker tarda en limpiarlas.
+
+No es acceso en vivo al disco, no requiere publicar el repo privado y no necesita configurar repositorios en un panel. No se verificó la conexión individual de los tres clientes: cada uno debe admitir MCP remoto y la autenticación existente. Véase LOCAL_REPOSITORIES.md para límites y verificación.

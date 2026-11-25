@@ -207,6 +207,9 @@ class BoardRunner:
                 for item in case_sources:
                     item["library_role"] = "provided_context"
                 sources += case_sources
+            from .local_repositories import evidence as local_evidence
+            if primary_sources:
+                sources += local_evidence(self.db, self.session.id, query)
             if not primary_sources:
                 self.db.add(
                     Message(

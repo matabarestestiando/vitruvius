@@ -21,3 +21,7 @@ See [scope and architecture](docs/ARCHITECTURE.md), [operations](docs/OPERATIONS
 ## Grounding required
 
 Expert names do not constitute evidence. The Board now requires reviewed primary libraries and retrieved, quoted evidence before allowing technical claims; unsupported responses abstain. Existing experts without primary sources will not issue technical opinions. Expert references, content ingestion and owner-approved professional profiles are documented in [GROUNDING.md](docs/GROUNDING.md). X/YouTube links alone are not ingested evidence; provide their text/transcript/PDF in this version.
+
+## Conversación en clientes y código local
+
+Las conversaciones se realizan desde clientes MCP compatibles conectados a Vitruvius; el portal ya no ofrece un chat. Para compartir un repositorio local, el cliente llama `prepare_local_repository` en su sesión, el propietario abre el enlace y autoriza una copia temporal desde el navegador. No configura rutas ni publica código privado. El consejo recibe fragmentos como contexto del caso y mantiene su requisito de fuentes primarias revisadas. Detalles, límites y compatibilidad en [docs/LOCAL_REPOSITORIES.md](docs/LOCAL_REPOSITORIES.md).

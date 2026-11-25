@@ -208,7 +208,8 @@ def remove_document(db, doc):
 
 
 def cleanup(db):
-    count = 0
+    from .local_repositories import cleanup as cleanup_local
+    count = cleanup_local(db)
     for tombstone in list(
         db.scalars(select(Record).where(Record.kind == "context_tombstone"))
     ):

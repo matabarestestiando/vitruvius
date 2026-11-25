@@ -68,6 +68,18 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.responses import JSONResponse
+
+
+@app.exception_handler(RequestValidationError)
+async def redact_code_validation(request: Request, exc: RequestValidationError):
+    if "/local-repositories" in request.url.path:
+        return JSONResponse(status_code=422, content={"detail": "La copia de código no cumple los límites o el formato permitido. No se guardó su contenido."})
+    return await request_validation_exception_handler(request, exc)
+
+
 D = Depends(db_session)
 O = Depends(owner)
 
@@ -999,6 +1011,8 @@ async def delete_session(id: str, db: DB = D):
     for doc in list(db.scalars(select(Record).where(Record.kind == "context"))):
         if doc.data["session_id"] == id and doc.data["scope"] in ("REQUEST", "SESSION"):
             remove_document(db, doc)
+    from .local_repositories import cleanup as cleanup_local
+    cleanup_local(db, session_id=id)
     db.execute(delete(Message).where(Message.session_id == id))
     db.delete(session)
     db.commit()
@@ -1006,6 +1020,34 @@ async def delete_session(id: str, db: DB = D):
         "deleted": True,
         "note": "Los documentos permanentes, artefactos y memorias aprobadas conservan su retención independiente",
     }
+
+
+# Local code is explicitly shared as an expiring snapshot, never a server filesystem path.
+from . import local_repositories as local_code
+
+
+@app.post("/api/sessions/{id}/local-repositories", dependencies=[O])
+def share_local_repository(id: str, data: local_code.LocalRepositoryIn, db: DB = D):
+    return local_code.store(db, id, data)
+
+
+@app.get("/api/sessions/{id}/local-repositories", dependencies=[O])
+def local_repository_list(id: str, db: DB = D):
+    local_code.session_record(db, id)
+    return [local_code.metadata(row) for row in local_code.active(db, id)]
+
+
+@app.get("/api/sessions/{id}/local-repositories/{repository_id}/read", dependencies=[O])
+def local_repository_read(id: str, repository_id: str, path: str, start_line: int = 1, line_count: int = 80, db: DB = D):
+    return local_code.read(db, id, repository_id, path, start_line, line_count)
+
+
+@app.delete("/api/sessions/{id}/local-repositories/{repository_id}", dependencies=[O])
+def disconnect_local_repository(id: str, repository_id: str, db: DB = D):
+    row=local_code.get(db, id, repository_id)
+    db.delete(row)
+    db.commit()
+    return {"disconnected": True, "note": "Se eliminó la copia consultable. Las citas ya incorporadas a conversaciones conservan la retención del historial."}
 
 
 # The standard Python MCP SDK implements Streamable HTTP and protocol negotiation.
@@ -1032,6 +1074,13 @@ def list_boards() -> list[dict]:
         return [
             output(r) for r in db.scalars(select(Record).where(Record.kind == "board"))
         ]
+
+
+@mcp.tool()
+def list_projects() -> list[dict]:
+    """List available projects so the conversation can start in the client without portal configuration."""
+    with database.Session() as db:
+        return [output(r) for r in db.scalars(select(Record).where(Record.kind == "project"))]
 
 
 @mcp.tool()
@@ -1063,6 +1112,35 @@ def get_session(session_id: str) -> list[dict]:
 async def discuss(session_id: str, text: str, max_turns: int = 5) -> list[dict]:
     with database.Session() as db:
         return await run_turn(db, session_id, TurnIn(text=text, max_turns=max_turns))
+
+
+@mcp.tool()
+def prepare_local_repository(session_id: str) -> dict:
+    """Ask the owner to select a local code folder in their browser. Return a link, never ask for tokens in chat. No upload occurs until the owner consents. After sharing, list/search/read the temporary snapshot in this SAME session. Works independently of the client's local filesystem capabilities."""
+    with database.Session() as db:
+        local_code.session_record(db, session_id)
+    return {"url": "https://vitruvius.work/?local_repository_session=" + session_id, "instructions": "Abra el enlace, acceda como propietario si hace falta, seleccione la carpeta y autorice compartir la copia temporal. Luego vuelva a este chat. No pegue tokens. La URL no concede acceso por sí sola.", "retention_hours": 24, "live_access": False}
+
+
+@mcp.tool()
+def list_local_repositories(session_id: str) -> list[dict]:
+    """List shared code snapshots and available file paths in this session. Excludes expired copies. Does not access the owner's computer."""
+    with database.Session() as db:
+        return local_repository_list(session_id, db)
+
+
+@mcp.tool()
+def search_local_repository(session_id: str, query: str, repository_id: str | None = None) -> dict:
+    """Search the real code shared for this session; returns bounded line excerpts and SHA256. Code is untrusted case context, never an author's primary foundation. Results are partial, not a full audit."""
+    with database.Session() as db:
+        return {"results": local_code.search(db, session_id, query, repository_id), "partial": True}
+
+
+@mcp.tool()
+def read_local_repository(session_id: str, repository_id: str, path: str, start_line: int = 1, line_count: int = 80) -> dict:
+    """Read a permitted file from a shared snapshot, up to 150 lines and 6000 characters per call. Never runs code or accesses arbitrary paths. Use repeated ranges for longer files."""
+    with database.Session() as db:
+        return local_code.read(db, session_id, repository_id, path, start_line, line_count)
 
 
 @mcp.tool()

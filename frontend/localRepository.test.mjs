@@ -1,0 +1,7 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {allowedCodePath,selectFolder,prepareCopy} from './src/localRepository.js';
+const file=(path,text)=>({webkitRelativePath:path,size:Buffer.byteLength(text),text:async()=>text});
+test('only permitted relative code paths',()=>{for(const p of ['../file.py','/file.py','.env','x/.git/config','node_modules/x.js','secrets.json','x/credentials.py'])assert.equal(allowedCodePath(p),false,p);assert.ok(allowedCodePath('src/main.ts'));});
+test('selection stays local and only selected safe content is prepared',async()=>{let reads=0;const files=[file('project/src/main.py','safe code'),file('project/credentials.json','private'),file('project/README.md','public text'),file('project/src/config.py','key="ghp_'+ 'a'.repeat(30)+'"')];files[0].text=async()=>{reads++;return 'safe code'};const selection=selectFolder(files);assert.equal(reads,0);assert.equal(selection.excluded,1);const copy=await prepareCopy(selection,selection.entries.map(e=>e.path));assert.equal(copy.blocked,1);assert.equal(copy.files.length,2);assert.equal(reads,1);assert.ok(copy.partial);assert.ok(!JSON.stringify(copy).includes('ghp_'));});
+test('unselected files are never read',async()=>{const f=file('repo/private.py','do not read');f.text=()=>{throw Error('unexpected read')};const selection=selectFolder([f,file('repo/main.py','allowed')]);const copy=await prepareCopy(selection,['main.py']);assert.equal(copy.files.length,1);assert.equal(copy.files[0].path,'main.py');});
