@@ -85,7 +85,15 @@ def ingest(document_id):
                         for block in obj["Body"].iter_chunks(chunk_size=1024 * 1024):
                             stream.write(block)
                     any_text = False
-                    for page, value in extract_for_ingestion(path, doc.data["content_type"],progress,fallback=extract):
+                    if doc.data["content_type"].startswith("image/"):
+                        from .chat_media import describe_image
+                        progress("extracting",method="vision_model")
+                        description=asyncio.run(describe_image(path.read_bytes(),doc.data["content_type"]))
+                        doc.data={**doc.data,"source":{"medium":"image","kind":"other","author":"Imagen aportada por el propietario","reviewed_by_owner":False},"visual_interpretation_unverified":True}
+                        extracted=[(None,description)]
+                    else:
+                        extracted=extract_for_ingestion(path, doc.data["content_type"],progress,fallback=extract)
+                    for page, value in extracted:
                         if value.strip():
                             any_text = True
                         for i in range(0, len(value), 2400):

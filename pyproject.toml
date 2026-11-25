@@ -2,7 +2,24 @@
 name = "vitruvius"
 version = "0.1.0"
 requires-python = ">=3.12,<3.14"
-dependencies = ["fastapi>=0.115,<1", "uvicorn[standard]>=0.34,<1", "sqlalchemy>=2.0,<3", "psycopg[binary]>=3.2,<4", "pgvector>=0.4,<1", "httpx>=0.28,<1", "langgraph>=1.0,<2", "langgraph-checkpoint-postgres>=3,<4", "langsmith>=0.4,<1", "openai>=2,<3", "boto3>=1.40,<2", "celery[redis]>=5.5,<6", "mcp>=1.20,<2", "pypdf>=6,<7", "python-multipart>=0.0.20,<1"]
+dependencies = [
+    "fastapi>=0.115,<1",
+ "uvicorn[standard]>=0.34,<1",
+ "sqlalchemy>=2.0,<3",
+ "psycopg[binary]>=3.2,<4",
+ "pgvector>=0.4,<1",
+ "httpx>=0.28,<1",
+ "langgraph>=1.0,<2",
+ "langgraph-checkpoint-postgres>=3,<4",
+ "langsmith>=0.4,<1",
+ "openai>=2,<3",
+ "boto3>=1.40,<2",
+ "celery[redis]>=5.5,<6",
+ "mcp>=1.20,<2",
+ "pypdf>=6,<7",
+ "python-multipart>=0.0.20,<1",
+ "pillow>=12,<13",
+]
 [project.optional-dependencies]
 documents = ["docling>=2,<3", "torch>=2.5,<3", "torchvision>=0.20,<1"]
 

@@ -29,18 +29,20 @@ class SkillIn(BaseModel):
 
 
 class SessionIn(BaseModel):
+    expert_ids: list[str] | None = Field(default=None,min_length=1,max_length=12)
     board_id: str
     project_id: str | None = None
     title: str = Field(default="Nueva discusión", max_length=200)
 
 
 class TurnIn(BaseModel):
+    attachment_ids: list[str] = Field(default_factory=list,max_length=12)
     text: str = Field(min_length=1, max_length=24000)
     max_turns: int = Field(default=5, ge=1, le=12)
 
 
 class SourceMetadata(BaseModel):
-    medium: Literal["text", "video", "social", "pdf"] = "text"
+    medium: Literal["text", "video", "social", "pdf", "image"] = "text"
     kind: Literal["author_work", "official_documentation", "other"] = "author_work"
     reviewed_by_owner: bool = False
     author: str | None = Field(default=None, max_length=200)

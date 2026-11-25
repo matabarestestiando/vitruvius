@@ -347,6 +347,7 @@ class BoardRunner:
                 "No atribuyas una opinión al panelista real. El autor de cada documento es independiente del nombre del panelista. "
                 "Distingue lo que afirma la fuente (kind=source) de tus propuestas derivadas (kind=inference). Las inferencias requieren premisas citadas y deben ser compatibles con ellas. "
                 "Devuelve JSON estricto: {claims:[{text:string,kind:'source'|'inference',evidence:[{chunk_id:string,quote:string}]}]}. "
+                "El campo text puede contener Markdown con listas, tablas y bloques de código. Si el propietario pide un diagrama, use un bloque ```mermaid con un diagrama sencillo, cuyos elementos sean compatibles con la evidencia citada. No invente referencias ni imágenes externas. Las descripciones visuales automáticas son interpretaciones no verificadas del caso; no las presente como observaciones ciertas ni fundamento del autor. "
                 "Cada cita debe copiar literalmente entre 12 y 900 caracteres de un fragmento real. Usa al menos una fuente primaria. "
                 "Si no hay sustento suficiente, devuelve {claims:[]}. Máximo cinco afirmaciones. "
                 "Los pasajes con library_role=provided_context son contexto del caso aportado por el propietario. Úsalos como requisitos o datos del problema, nunca como fundamento metodológico ni como opiniones del autor. Cada interpretación profesional necesita al menos una premisa primaria citada. "
@@ -365,26 +366,31 @@ class BoardRunner:
                 + json.dumps(sources, ensure_ascii=False)
             )
             citations = []
-            try:
-                raw = await self.complete(
-                    system,
-                    state["transcript"],
-                    e.data.get("model"),
-                    structured=True,
-                    **(
-                        {"tool_specs": tool_specs, "dispatch": dispatch}
-                        if tool_specs
-                        else {}
-                    ),
-                )
-                answer = GroundedAnswer.model_validate_json(raw)
-                citations = await review_answer(
-                    self.complete, answer, sources, primary_ids, question=query
-                )
-                output = render_answer(answer)
-            except Exception:
-                output = ABSTENTION
-                citations = []
+            output = ABSTENTION
+            for attempt in range(2):
+                try:
+                    retry = ("\nLa respuesta anterior no superó el cotejo de citas o su revisión. Redacte una respuesta más acotada usando únicamente estos mismos pasajes. Copie citas literalmente, conservando palabras, guiones y signos; no traduzca las citas ni use puntos suspensivos para omitir texto. Si no hay sustento, devuelva claims vacío." if attempt else "")
+                    raw = await self.complete(
+                        system + retry,
+                        state["transcript"],
+                        e.data.get("model"),
+                        structured=True,
+                        **({"tool_specs": tool_specs, "dispatch": dispatch} if tool_specs else {}),
+                    )
+                    answer = GroundedAnswer.model_validate_json(raw)
+                    citations = await review_answer(self.complete, answer, sources, primary_ids, question=query)
+                    output = render_answer(answer)
+                    break
+                except ValueError as exc:
+                    # A correction still passes the identical quote and semantic checks.
+                    # No retry on missing evidence, provider failure or invalid JSON.
+                    citations = []
+                    if attempt == 0 and str(exc) in {"Unknown chunk or fabricated quotation", "Unsubstantiated claim"}:
+                        continue
+                    break
+                except Exception:
+                    citations = []
+                    break
             # Store actual retrieved IDs separately; no fabricated bibliographic claims.
             msg = Message(
                 session_id=self.session.id,

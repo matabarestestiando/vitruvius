@@ -370,3 +370,23 @@ async def test_project_context_remains_visible_but_is_not_foundation(
         }
     )
     assert observed
+
+
+@pytest.mark.asyncio
+async def test_quote_repair_is_bounded_and_rechecked(db,workspace):
+    from app.board import BoardRunner
+    _, s, cat=workspace;session=db.get(Record,s['id']);expert=db.get(Record,cat['expert'][0]['id'])
+    doc,chunk=source(db,expert,session);expert.data={**expert.data,'primary_source_ids':[doc.id]};db.commit()
+    runner=BoardRunner(db,session,[expert],client=object());attempts=0;reviews=0
+    async def fake(system,*args,**kwargs):
+        nonlocal attempts,reviews
+        if system.startswith('Eres el moderador'):return json.dumps({'next_speaker':expert.id,'done':False})
+        if system.startswith('Verifica'):
+            reviews+=1;return json.dumps({'accepted_claim_indices':[0]})
+        attempts+=1
+        return json.dumps(answer(chunk.id,quote='A fabricated quotation for testing.' if attempts==1 else QUOTE))
+    runner.complete=fake
+    await runner.graph(1).ainvoke({'transcript':[{'speaker':'Propietario','content':'What database does the synthetic project use?'}],'turns':0,'done':False,'next_speaker':'','summary':''})
+    message=db.query(Message).filter(Message.speaker==expert.data['name']).one()
+    assert attempts==2 and reviews==1 and len(message.citations)==1
+    assert message.citations[0]['quote']==QUOTE

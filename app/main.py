@@ -236,6 +236,7 @@ def configure_expert_library(id: str, data: ExpertLibraryIn, db: DB = D):
         raise HTTPException(422, "Confirme explícitamente la biblioteca de fundamento")
     for document_id in data.document_ids:
         doc = record(db, document_id, "context")
+        if doc.data.get("generated_image") or doc.data.get("content_type","").startswith("image/") or (doc.data.get("source") or {}).get("medium")=="image":raise HTTPException(422,"Las imágenes del chat son contexto del caso, no bibliografía de un experto")
         source = doc.data.get("source") or {}
         if (
             doc.data.get("status") != "ready"
@@ -517,7 +518,8 @@ def skills(data: SkillIn, db: DB = D):
 
 @app.post("/api/sessions", dependencies=[O])
 def sessions(data: SessionIn, db: DB = D):
-    record(db, data.board_id, "board")
+    board=record(db, data.board_id, "board")
+    if data.expert_ids is not None and any(id not in board.data["expert_ids"] for id in data.expert_ids):raise HTTPException(422,"Seleccione expertos de este consejo")
     if data.project_id:
         record(db, data.project_id, "project")
         scope_id=data.project_id
@@ -540,26 +542,8 @@ def library_session(board_id: str, db: DB = D):
 @app.get("/api/sessions/{id}/messages", dependencies=[O])
 def messages(id: str, db: DB = D):
     record(db, id, "session")
-    return [
-        {
-            "id": m.id,
-            "speaker": m.speaker,
-            "content": m.content,
-            "citations": m.citations,
-            "grounding_status": "supported"
-            if m.citations
-            and all(
-                c.get("verification") == "quote_match_and_model_review"
-                for c in m.citations
-            )
-            else "not_verified",
-        }
-        for m in db.scalars(
-            select(Message)
-            .where(Message.session_id == id)
-            .order_by(Message.created_at, Message.id)
-        )
-    ]
+    from .chat_media import message_payload
+    return [message_payload(db,m) for m in db.scalars(select(Message).where(Message.session_id==id).order_by(Message.created_at,Message.id))]
 
 
 async def run_turn(db, id, data):
@@ -585,6 +569,8 @@ async def run_turn(db, id, data):
         if conn:
             conn.commit()
         cleanup(db)
+        from .chat_media import attachment_citations
+        attached=attachment_citations(db,id,data.attachment_ids)
         transcript = [
             {"speaker": m.speaker, "content": m.content}
             for m in db.scalars(
@@ -596,7 +582,7 @@ async def run_turn(db, id, data):
         transcript.append({"speaker": "Propietario", "content": data.text})
         db.add(
             Message(
-                session_id=id, speaker="Propietario", content=data.text, citations=[]
+                session_id=id, speaker="Propietario", content=data.text, citations=attached
             )
         )
         db.commit()
@@ -617,7 +603,7 @@ async def run_turn(db, id, data):
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
         url = settings.database_url.replace("postgresql+psycopg://", "postgresql://")
-        experts = [record(db, e, "expert") for e in board.data["expert_ids"]]
+        experts = [record(db, e, "expert") for e in (session.data.get("expert_ids") or board.data["expert_ids"])]
         db.commit()  # Release read snapshots before the asynchronous graph executes.
         async with AsyncPostgresSaver.from_conn_string(url) as saver:
             runner=BoardRunner(db, session, experts, saver)
@@ -662,6 +648,80 @@ async def turns(id: str, data: TurnIn, db: DB = D):
     return await run_turn(db, id, data)
 
 
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+
+
+class ImagePromptIn(BaseModel):
+    prompt: str = Field(min_length=1,max_length=8000)
+
+
+@app.get("/api/sessions/{id}/attachments/{document_id}",dependencies=[O])
+def attachment_content(id: str,document_id: str,db: DB=D):
+    from .chat_media import attachment
+    doc=attachment(db,id,document_id)
+    if doc.data.get("status")!="ready" or not doc.data.get("object_key"):raise HTTPException(409,"El adjunto aún no está disponible")
+    body=spaces().get_object(Bucket=settings.spaces_bucket,Key=doc.data["object_key"])["Body"]
+    def chunks():
+        try:
+            yield from body.iter_chunks(chunk_size=65536)
+        finally:body.close()
+    return StreamingResponse(chunks(),media_type=doc.data["content_type"],headers={"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff","Content-Disposition":"inline"})
+
+
+@app.post("/api/sessions/{id}/images",dependencies=[O])
+async def generate_chat_image(id: str,data:ImagePromptIn,db:DB=D):
+    from .chat_media import generate
+    lock_id=int.from_bytes(hashlib.sha256(id.encode()).digest()[:8],"big",signed=True)
+    conn=database.engine.connect() if db.bind.dialect.name=="postgresql" else None
+    acquired=False
+    try:
+        if conn:
+            acquired=bool(conn.execute(text("SELECT pg_try_advisory_lock(:id)"),{"id":lock_id}).scalar());conn.commit()
+            if not acquired:raise HTTPException(409,"La conversación ya está en ejecución")
+        await generate(db,id,data.prompt)
+        return messages(id,db)
+    finally:
+        if conn:
+            if acquired:conn.execute(text("SELECT pg_advisory_unlock(:id)"),{"id":lock_id})
+            conn.close()
+
+
+@app.post("/api/sessions/{id}/turns/stream",dependencies=[O])
+async def stream_turn(id: str,data:TurnIn,request:Request,db:DB=D):
+    record(db,id,"session")
+    from .chat_media import attachment_citations
+    attachment_citations(db,id,data.attachment_ids)
+    async def events():
+        async def execute_turn():
+            with database.Session() as active_db:return await run_turn(active_db,id,data)
+        task=asyncio.create_task(execute_turn())
+        previous=None
+        try:
+            while not task.done():
+                if await request.is_disconnected():
+                    task.cancel();break
+                with database.Session() as read_db:current=messages(id,read_db)
+                encoded=json.dumps(current,ensure_ascii=False)
+                if encoded!=previous:
+                    previous=encoded;yield 'event: messages\ndata: '+encoded+'\n\n'
+                yield 'event: status\ndata: {"stage":"working"}\n\n'
+                await asyncio.wait({task},timeout=1.5)
+            if task.cancelled():return
+            result=await task
+            yield 'event: messages\ndata: '+json.dumps(result,ensure_ascii=False)+'\n\n'
+            yield 'event: done\ndata: {}\n\n'
+        except asyncio.CancelledError:
+            task.cancel()
+        except Exception:
+            yield 'event: error\ndata: {"message":"La respuesta no pudo completarse. Las intervenciones verificadas quedaron en el historial."}\n\n'
+        finally:
+            if not task.done():task.cancel()
+            try:await task
+            except BaseException:pass
+    return StreamingResponse(events(),media_type="text/event-stream",headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
+
+
 @app.post("/api/contexts", dependencies=[O])
 def contexts(data: ContextIn, db: DB = D):
     session = record(db, data.session_id, "session")
@@ -679,12 +739,13 @@ async def index(id: str, db: DB = D):
 @app.post("/api/contexts/{id}/upload", dependencies=[O])
 def upload(
     id: str,
-    content_type: str = Query(pattern="^(application/pdf|text/plain|text/markdown)$"),
+    content_type: str = Query(pattern="^(application/pdf|text/plain|text/markdown|image/png|image/jpeg|image/webp)$"),
     db: DB = D,
 ):
     doc = record(db, id, "context")
     if doc.data.get("object_key"):
         raise HTTPException(409, "Ya existe una carga")
+    if content_type.startswith("image/") and doc.data.get("scope")!="SESSION":raise HTTPException(422,"Las imágenes se adjuntan temporalmente a una conversación")
     key = "context/" + doc.id + "/" + str(uuid4())
     result = spaces().generate_presigned_post(
         Bucket=settings.spaces_bucket,
@@ -705,6 +766,17 @@ def upload(
     return result
 
 
+@app.post("/api/sessions/{session_id}/attachments/{id}/upload", dependencies=[O])
+def chat_attachment_upload(session_id:str,id:str,content_type:str=Query(pattern="^(application/pdf|text/plain|text/markdown|image/png|image/jpeg|image/webp)$"),db:DB=D):
+    from .chat_media import attachment
+    doc=attachment(db,session_id,id)
+    if doc.data.get("scope")!="SESSION" or doc.data.get("status") not in {"awaiting_upload","ready"} or doc.data.get("object_key") and doc.data.get("status")!="awaiting_upload":raise HTTPException(409,"Carga no disponible")
+    if doc.data.get("object_key"):
+        if doc.data.get("content_type")!=content_type:raise HTTPException(409,"El tipo de archivo cambió")
+        return spaces().generate_presigned_post(Bucket=settings.spaces_bucket,Key=doc.data["object_key"],Fields={"Content-Type":content_type},Conditions=[{"Content-Type":content_type}],ExpiresIn=300)
+    return upload(id,content_type,db)
+
+
 @app.post("/api/contexts/{id}/finalize", dependencies=[O])
 def finalize(id: str, db: DB = D):
     doc = record(db, id, "context")
@@ -713,6 +785,7 @@ def finalize(id: str, db: DB = D):
     head = spaces().head_object(
         Bucket=settings.spaces_bucket, Key=doc.data["object_key"]
     )
+    if doc.data.get("content_type","").startswith("image/") and head["ContentLength"]>16*1024*1024:raise HTTPException(422,"Las imágenes deben ocupar como máximo 16 MB")
     if head["ContentLength"] <= 0:
         raise HTTPException(422, "El archivo está vacío")
     doc.data = {**doc.data, "status": "queued", "size_bytes": head["ContentLength"],"ingest_dispatch_requested_at":now().isoformat()}
@@ -737,6 +810,7 @@ def promote(
     id: str, scope: str = Query(pattern="^(PROJECT|BOARD|EXPERT|GLOBAL)$"), db: DB = D
 ):
     doc = record(db, id, "context")
+    if doc.data.get("generated_image") or doc.data.get("content_type", "").startswith("image/"):raise HTTPException(422,"Las imágenes del chat conservan su retención temporal")
     if scope == "EXPERT" and not doc.data["expert_ids"]:
         raise HTTPException(422, "Debe asignar expertos")
     doc.data = {

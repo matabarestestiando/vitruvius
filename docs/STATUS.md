@@ -1,3 +1,15 @@
+## Actualización: chat nativo — 25 de noviembre de 2026
+
+Por decisión posterior del propietario, Chat vuelve a ser la entrada principal. Ya no es necesario configurar Gemini, Claude o ChatGPT para conversar en Vitruvius. MCP sigue disponible como alternativa. Se mantienen conversaciones sin proyecto y resultados opcionales de memoria/especificación.
+
+Se implementaron historial, selección de expertos con fuentes, adjuntos PDF/texto/Markdown/imágenes, análisis visual temporal, generación real de imágenes vía OpenRouter, Markdown, diagramas Mermaid y revisión de citas. No se compraron componentes de pago. Detalles y límites en CHAT.md.
+
+Verificación: 84 pruebas Python y 3 pruebas del lector de eventos; compilación Vue; revisión visual local y de la versión desplegada mediante acceso local de solo lectura. HTTPS público saludable. Pruebas reales: OpenRouter interpretó una imagen sintética, generó una imagen JPEG privada y la carga por Spaces/Celery quedó ready con interpretación marcada no verificada; aislamiento entre sesiones y acceso anónimo denegado. Solo se limpiaron los registros/archivos sintéticos creados para esa prueba.
+
+Los libros reales de Antonio Gulli y Michael Lanham están cargados y habilitados. Una respuesta real de Gulli cotejó pasajes de Agentic Design Patterns (páginas 118 y 129). La primera consulta amplia produjo abstenciones; otra respuesta de Lanham falló el cotejo literal. Se añadió una única corrección con los mismos pasajes y las mismas comprobaciones. La prueba posterior de MCP en la sesión de Lanham devolvió una afirmación con cita cotejada de la página 31. Esto no asegura que todas las preguntas puedan responderse: se mantiene la abstención y no se promete cero alucinaciones.
+
+No se modificó el despliegue de vitruvius-memory ni se abrieron puertos de memoria o Neo4j. Los apartados siguientes conservan antecedentes de despliegues previos; las referencias al portal sin chat describen la decisión anterior, reemplazada por esta actualización.
+
 # Estado actual: consejo y conversaciones libres
 
 ## Corrección del autor del experto
