@@ -1,10 +1,13 @@
 import asyncio
+import shutil, tempfile
+from pathlib import Path
 from celery import Celery
 from .config import settings
 from .db import Session, Record, Chunk
 from .knowledge import spaces, extract, index_document, cleanup
 
 celery = Celery("vitruvius", broker=settings.redis_url, backend=settings.redis_url)
+celery.conf.imports = ("app.reference_worker",)
 celery.conf.update(
     worker_concurrency=1,
     task_serializer="json",
@@ -17,12 +20,16 @@ celery.conf.update(
 
 @celery.task(name="context.expire")
 def expire_context():
+    # This worker is single-concurrency: cleanup cannot race an active import.
+    for directory in Path(tempfile.gettempdir()).glob("vitruvius-ingest-*"):
+        if directory.is_dir() and not directory.is_symlink():
+            shutil.rmtree(directory, ignore_errors=True)
     if Session:
         with Session() as db:
             return cleanup(db)
 
 
-@celery.task(name="context.ingest", soft_time_limit=270, time_limit=300)
+@celery.task(name="context.ingest", soft_time_limit=3300, time_limit=3600)
 def ingest(document_id):
     if not Session:
         return
@@ -39,25 +46,46 @@ def ingest(document_id):
             obj = s3.get_object(
                 Bucket=settings.spaces_bucket, Key=doc.data["object_key"]
             )
-            if obj["ContentLength"] > 20 * 1024 * 1024:
-                raise ValueError("size")
-            content = obj["Body"].read(20 * 1024 * 1024 + 1)
-            pages = extract(content, doc.data["content_type"])
-            total = sum(len(t) for _, t in pages)
-            if not total or total > 2000000:
-                raise ValueError("Texto vacío o demasiado extenso")
-            for page, value in pages:
-                for i in range(0, len(value), 2400):
-                    db.add(
-                        Chunk(
-                            document_id=doc.id,
-                            text=value[i : i + 2800],
-                            page=page,
-                            embedding=None,
-                        )
+            try:
+                if (
+                    obj["ContentLength"]
+                    > shutil.disk_usage(tempfile.gettempdir()).free - 1024 * 1024 * 1024
+                ):
+                    raise ValueError(
+                        "No hay espacio temporal suficiente para procesar este archivo"
                     )
-            db.flush()
-            asyncio.run(index_document(db, doc))
+                with tempfile.TemporaryDirectory(
+                    prefix="vitruvius-ingest-"
+                ) as directory:
+                    path = Path(directory) / (
+                        "source.pdf"
+                        if doc.data["content_type"] == "application/pdf"
+                        else "source.txt"
+                    )
+                    with path.open("wb") as stream:
+                        for block in obj["Body"].iter_chunks(chunk_size=1024 * 1024):
+                            stream.write(block)
+                    any_text = False
+                    for page, value in extract(path, doc.data["content_type"]):
+                        if value.strip():
+                            any_text = True
+                        for i in range(0, len(value), 2400):
+                            db.add(
+                                Chunk(
+                                    document_id=doc.id,
+                                    text=value[i : i + 2800],
+                                    page=page,
+                                    embedding=None,
+                                )
+                            )
+                        db.flush()
+                    if not any_text:
+                        raise ValueError(
+                            "El documento no tiene texto extraíble; OCR sigue desactivado"
+                        )
+                    asyncio.run(index_document(db, doc, commit=False))
+            finally:
+                obj["Body"].close()
             doc.data = {**doc.data, "status": "ready"}
             db.commit()
         except Exception:
@@ -67,6 +95,6 @@ def ingest(document_id):
                 doc.data = {
                     **doc.data,
                     "status": "failed",
-                    "error": "No se pudo procesar: revise formato, tamaño y configuración",
+                    "error": "No se pudo procesar el documento. Revise el formato, texto extraíble, recursos disponibles y configuración.",
                 }
                 db.commit()

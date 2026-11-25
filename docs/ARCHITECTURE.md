@@ -25,7 +25,7 @@ Default scope SESSION and 24-hour retention; REQUEST retires at the end of a dis
 
 Original-document retention is distinct from the conversation: expert answers and private checkpoints may contain derived excerpts. Those remain part of session history until the session is deleted. The UI and operations documentation must disclose this; no claim of erasure from provider systems or backups. Spaces bucket lifecycle, versioning and provider retention need operator configuration.
 
-Text, Markdown and text-based PDFs supported initially, with page citations and limits. The production worker uses Docling with CPU-only PyTorch, table extraction, two CPU threads and a five-minute task limit; OCR is disabled in this initial configuration. Model weights are cached in a private persistent volume. Future source types include EPUB/HTML, OCR for scanned PDFs, audio/video/podcasts, RSS, scene analysis, transcript speakers and timestamps. Unsupported source types fail explicitly. Never pretend these pipelines are already active.
+Text, Markdown and text-based PDFs supported initially, with page citations and limits. The production worker uses Docling with CPU-only PyTorch, table extraction, two CPU threads and a 55-minute soft task limit and 60-minute hard task limit; OCR is disabled in this initial configuration. Model weights are cached in a private persistent volume. Future source types include EPUB/HTML, OCR for scanned PDFs, audio/video/podcasts, RSS, scene analysis, transcript speakers and timestamps. Unsupported source types fail explicitly. Never pretend these pipelines are already active.
 
 ## Decisions and execution
 

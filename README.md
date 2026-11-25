@@ -17,3 +17,7 @@ Copy the managed PostgreSQL connection using an exact confirmed password (URL en
 The owner token is generated on the server and never committed. Browser authentication is Bearer and held in memory only. All REST operations except `/healthz` and the portal assets require it. MCP at `/mcp/` has the same authorization. Never use the owner token over public plain HTTP.
 
 See [scope and architecture](docs/ARCHITECTURE.md), [operations](docs/OPERATIONS.md), [implementation status](docs/STATUS.md), and [API workflow](docs/API.md).
+
+## Grounding required
+
+Expert names do not constitute evidence. The Board now requires reviewed primary libraries and retrieved, quoted evidence before allowing technical claims; unsupported responses abstain. Existing experts without primary sources will not issue technical opinions. Expert references, content ingestion and owner-approved professional profiles are documented in [GROUNDING.md](docs/GROUNDING.md). X/YouTube links alone are not ingested evidence; provide their text/transcript/PDF in this version.

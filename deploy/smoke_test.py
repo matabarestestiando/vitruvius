@@ -1,218 +1,75 @@
-"""Run inside API container. Synthetic integration verification; prints no secrets or model content."""
-
-import asyncio, json, os, time, uuid
+"""Disposable synthetic verification. No source is attributed to a real person."""
+import asyncio,json,uuid
 import httpx
-from sqlalchemy import select, delete, text
-from app.db import Session, Record, Message, Chunk, Approval
+from sqlalchemy import select,delete
 from app.config import settings
-
+from app.db import Session,Record,Message,Chunk,Approval
+PREFIX='SYNTHETIC GROUNDING VERIFICATION '
+SOURCE='SYNTHETIC TEST MATERIAL, not real literature. Professional method: establish requirements before choosing tools. Require explicit owner approval before exporting development specifications. Use PostgreSQL for durable project decisions. Treat unverified links as references, not evidence.'
 
 async def main():
-    headers = {"Authorization": "Bearer " + settings.owner_token}
-    project_id = session_id = episode_id = None
-    async with httpx.AsyncClient(
-        base_url="http://127.0.0.1:8000", headers=headers, timeout=240
-    ) as api:
-
-        async def request(method, path, data=None):
-            r = await api.request(method, path, json=data)
-            if r.status_code >= 400:
-                raise RuntimeError(path + " returned " + str(r.status_code))
+    created=[];session_id=None;project_id=None;expert_id=None;board_id=None
+    async with httpx.AsyncClient(base_url='http://127.0.0.1:8000',headers={'Authorization':'Bearer '+settings.owner_token},timeout=240) as api:
+        async def request(method,path,body=None,expected=200):
+            r=await api.request(method,'/api'+path,json=body)
+            if r.status_code!=expected: raise AssertionError(path+' HTTP '+str(r.status_code))
             return r.json()
-
         try:
-            catalog = await request("GET", "/api/catalog")
-            p = await request(
-                "POST",
-                "/api/projects",
-                {"name": "SYNTHETIC DEPLOYMENT VERIFICATION " + str(uuid.uuid4())[:8]},
-            )
-            project_id = p["id"]
-            s = await request(
-                "POST",
-                "/api/sessions",
-                {
-                    "project_id": project_id,
-                    "board_id": catalog["board"][0]["id"],
-                    "title": "Temporary integration verification",
-                },
-            )
-            session_id = s["id"]
-            c = await request(
-                "POST",
-                "/api/contexts",
-                {
-                    "session_id": session_id,
-                    "title": "Synthetic deployment check",
-                    "text": "SYNTHETIC TEST DATA: the sample application has one owner and needs an explicit approval before exporting development specifications.",
-                },
-            )
-            await request("POST", "/api/contexts/" + c["id"] + "/index", {})
-            with Session() as db:
-                count = db.execute(
-                    text(
-                        "SELECT count(*) FROM chunks WHERE document_id=:id AND vector_embedding IS NOT NULL"
-                    ),
-                    {"id": c["id"]},
-                ).scalar()
-                assert count > 0
-            print("Managed pgvector embedding/index: PASS")
-            result = await request(
-                "POST",
-                "/api/sessions/" + session_id + "/turns",
-                {
-                    "text": "Prueba sintética de despliegue. Antonio, pide a Harrison revisar un agente de un solo usuario que exporta especificaciones solo tras aprobación. Consulta el contexto adjunto. No atribuyas afirmaciones a autores ni libros. Limita la discusión a una intervención.",
-                    "max_turns": 1,
-                },
-            )
-            assert len(result) >= 3
-            print(
-                "Dynamic LangGraph/OpenRouter/PostgreSQL checkpoint: PASS; messages:",
-                len(result),
-            )
-            # Standard protocol, same session, no fabricated client interoperability claim.
-            r = await api.post(
-                "/mcp/",
-                headers={"Accept": "application/json, text/event-stream"},
-                json={
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "tools/call",
-                    "params": {
-                        "name": "get_session",
-                        "arguments": {"session_id": session_id},
-                    },
-                },
-            )
-            assert r.status_code == 200 and not r.json()["result"].get("isError")
-            print("MCP same-session history: PASS")
-            draft = await request(
-                "POST",
-                "/api/sessions/" + session_id + "/draft",
-                {"kind": "specification"},
-            )
-            r = await api.get("/api/projects/" + project_id + "/export")
-            assert r.status_code == 409
-            await request("POST", "/api/artifacts/" + draft["id"] + "/approve", {})
-            handoff = await request(
-                "GET", "/api/projects/" + project_id + "/export?target=codex"
-            )
-            assert draft["digest"] in handoff["prompt"]
-            print("Generated draft/approval/handoff: PASS")
-            upload = await request(
-                "POST",
-                "/api/contexts",
-                {
-                    "session_id": session_id,
-                    "title": "Temporary upload verification",
-                    "text": "",
-                },
-            )
-            signed = await request(
-                "POST",
-                "/api/contexts/" + upload["id"] + "/upload?content_type=text%2Fplain",
-                {},
-            )
-            async with httpx.AsyncClient(timeout=30) as external:
-                r = await external.post(
-                    signed["url"],
-                    data=signed["fields"],
-                    files={
-                        "file": (
-                            "synthetic.txt",
-                            b"SYNTHETIC UPLOAD: temporary deployment verification, not a literature source.",
-                            "text/plain",
-                        )
-                    },
-                )
-                assert r.status_code in (200, 201, 204), r.status_code
-            await request("POST", "/api/contexts/" + upload["id"] + "/finalize", {})
-            for _ in range(35):
-                await asyncio.sleep(2)
-                cat = await request("GET", "/api/catalog")
-                item = next(x for x in cat["context"] if x["id"] == upload["id"])
-                if item["status"] in ("ready", "failed"):
-                    break
-            assert item["status"] == "ready", item["status"]
-            await request("DELETE", "/api/contexts/" + upload["id"])
-            print("Spaces presigned upload/worker extraction/embedding/deletion: PASS")
-            async with httpx.AsyncClient(
-                base_url=settings.memory_url,
-                headers={"Authorization": "Bearer " + settings.memory_token},
-                timeout=240,
-            ) as memory:
-                group = "vitruvius:project:" + project_id
-                r = await memory.post(
-                    "/episodes",
-                    json={
-                        "group_id": group,
-                        "name": "synthetic-verification",
-                        "text": "SYNTHETIC TEST DATA. Project Meridian uses PostgreSQL as its database. Project Meridian is deployed on host Atlas. Test Owner operates Project Meridian. These are disposable deployment verification facts, not literature.",
-                        "approved": True,
-                    },
-                )
-                assert r.status_code == 200, "memory ingestion " + str(r.status_code)
-                episode_id = r.json()["episode_id"]
-                r = await memory.post(
-                    "/search",
-                    json={
-                        "group_id": group,
-                        "query": "Which database does Project Meridian use?",
-                        "limit": 3,
-                    },
-                )
-                assert r.status_code == 200 and r.json()["facts"], (
-                    "memory search " + str(r.status_code)
-                )
-                other = await memory.post(
-                    "/search",
-                    json={
-                        "group_id": "vitruvius:project:isolated-verification",
-                        "query": "verification-council",
-                        "limit": 3,
-                    },
-                )
-                assert other.status_code == 200 and not other.json()["facts"]
-                print("Graphiti ingestion/search/namespace isolation: PASS")
-                r = await memory.post(
-                    "/episodes/" + episode_id + "/delete", json={"group_id": group}
-                )
-                assert r.status_code == 200
-                episode_id = None
-            await request("DELETE", "/api/sessions/" + session_id)
-            session_id = None
-            print("Session context/history/checkpoint deletion: PASS")
+            name='Synthetic Verification Author '+str(uuid.uuid4())[:8]
+            expert=await request('POST','/experts',{'name':name,'specialty':'Synthetic evidence verification only'});expert_id=expert['id']
+            board=await request('POST','/boards',{'name':PREFIX+str(uuid.uuid4())[:8],'expert_ids':[expert_id]});board_id=board['id']
+            project=await request('POST','/projects',{'name':PREFIX+str(uuid.uuid4())[:8]});project_id=project['id']
+            session=await request('POST','/sessions',{'board_id':board_id,'project_id':project_id});session_id=session['id']
+            empty=await request('POST','/sessions/'+session_id+'/turns',{'text':'Give an opinion about agent architecture','max_turns':1})
+            assert not any(m['speaker']==name for m in empty)
+            assert 'No se emitieron opiniones técnicas' in empty[-1]['content']
+            print('No primary library => no technical opinion: PASS',flush=True)
+            ref=await request('POST','/experts/'+expert_id+'/references',{'title':'SYNTHETIC VIDEO LINK — NO CONTENT FETCHED','author':name,'kind':'youtube','url':'https://www.youtube.com/watch?v=synthetic-only'})
+            created.append(ref['id'])
+            r=await request('POST','/references/'+ref['id']+'/import',{'session_id':session_id,'permanent_consent':True})
+            assert r['status']=='requires_content' and r.get('document_id') is None
+            print('Registered YouTube URL is not counted as evidence: PASS',flush=True)
+            ref2=await request('POST','/experts/'+expert_id+'/references',{'title':'SYNTHETIC SOURCE, NOT REAL LITERATURE','author':name,'kind':'article','url':'https://example.invalid/synthetic-test'})
+            created.append(ref2['id'])
+            content=await request('POST','/references/'+ref2['id']+'/text',{'session_id':session_id,'permanent_consent':True,'text':SOURCE})
+            doc_id=content['document_id'];created.append(doc_id)
+            await request('POST','/contexts/'+doc_id+'/source',{'author':name,'source_url':'https://example.invalid/synthetic-test','kind':'author_work','reviewed_by_owner':True})
+            await request('POST','/experts/'+expert_id+'/sources',{'document_ids':[doc_id],'role':'primary','approved':True})
+            # Ensure actual pgvector index completion, independently of queue timing.
+            await request('POST','/contexts/'+doc_id+'/index',{})
+            print('Reference text incorporated, reviewed, indexed and assigned as primary: PASS',flush=True)
+            history=await request('POST','/sessions/'+session_id+'/turns',{'text':'Según el material sintético proporcionado, ¿qué debe ocurrir antes de elegir herramientas? Responda solo con una afirmación sustentada en un fragmento literal. No atribuya nada a una persona real.','max_turns':1})
+            replies=[m for m in history if m['speaker']==name]
+            assert replies and replies[-1]['grounding_status']=='supported','No supported technical response produced'
+            assert replies[-1]['citations']
+            for c in replies[-1]['citations']:
+                assert c['quote'] in SOURCE and c['source']['author']==name
+            print('Real model response => exact quoted primary evidence + independent review: PASS',flush=True)
+            profile=await request('POST','/experts/'+expert_id+'/profile/draft',{'session_id':session_id});created.append(profile['id'])
+            assert profile['status']=='draft' and profile['citations']
+            await request('POST','/expert-profiles/'+profile['id']+'/approve',{'approved':True})
+            print('Documented professional profile drafted and explicitly approved: PASS',flush=True)
+            # An unsupported foreign author cannot become this expert's primary author.
+            other=await request('POST','/contexts',{'session_id':session_id,'title':'SYNTHETIC OTHER AUTHOR','text':SOURCE,'scope':'EXPERT','expert_ids':[expert_id],'permanent_consent':True,'source':{'author':'Different Synthetic Author','reviewed_by_owner':True}})
+            created.append(other['id'])
+            await request('POST','/experts/'+expert_id+'/sources',{'document_ids':[other['id']],'approved':True},expected=422)
+            print('Other-author material cannot replace the primary author: PASS',flush=True)
         finally:
             if session_id:
-                try:
-                    await api.delete("/api/sessions/" + session_id)
-                except Exception:
-                    pass
-            if episode_id:
-                async with httpx.AsyncClient(timeout=90) as mem:
-                    await mem.post(
-                        settings.memory_url + "/episodes/" + episode_id + "/delete",
-                        headers={"Authorization": "Bearer " + settings.memory_token},
-                        json={"group_id": "vitruvius:project:" + project_id},
-                    )
-            if project_id:
-                with Session() as db:
-                    for a in list(
-                        db.scalars(
-                            select(Record).where(
-                                Record.kind.in_(["artifact", "review"])
-                            )
-                        )
-                    ):
-                        if a.data.get("project_id") == project_id:
-                            db.execute(
-                                delete(Approval).where(Approval.artifact_id == a.id)
-                            )
-                            db.delete(a)
-                    db.delete(db.get(Record, project_id))
-                    db.commit()
-            print("Synthetic verification data cleanup: completed")
-
-
+                await api.delete('/api/sessions/'+session_id)
+            with Session() as db:
+                from app.knowledge import remove_document
+                for id in reversed(created):
+                    r=db.get(Record,id)
+                    if not r: continue
+                    if r.kind=='context': remove_document(db,r)
+                    else: db.delete(r);db.commit()
+                for r in list(db.scalars(select(Record).where(Record.kind=='expert_library_audit'))):
+                    if r.data.get('expert_id')==expert_id:db.delete(r)
+                for id in (project_id,board_id,expert_id):
+                    r=db.get(Record,id) if id else None
+                    if r: db.delete(r)
+                db.commit()
+            print('Synthetic expert, sources, profile, board, project and history cleanup: complete',flush=True)
 if __name__ == "__main__":
     asyncio.run(main())

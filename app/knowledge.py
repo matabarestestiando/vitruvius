@@ -1,5 +1,6 @@
 from datetime import timedelta
 from io import BytesIO
+from pathlib import Path
 import os
 import boto3
 from botocore.config import Config
@@ -92,29 +93,51 @@ async def embed(value):
         result = await client.embeddings.create(
             model=settings.embedding_model, input=value, dimensions=1536
         )
-    return result.data[0].embedding
+    vectors = [
+        item.embedding for item in sorted(result.data, key=lambda item: item.index)
+    ]
+    if isinstance(value, list):
+        if len(vectors) != len(value):
+            raise ValueError("Incomplete embeddings response")
+        return vectors
+    return vectors[0]
 
 
-async def index_document(db, doc):
-    chunks = list(db.scalars(select(Chunk).where(Chunk.document_id == doc.id)))
-    for c in chunks:
-        vector = await embed(c.text)
-        c.embedding = vector
-        if db.bind.dialect.name == "postgresql":
-            db.execute(
-                text(
-                    "UPDATE chunks SET vector_embedding=CAST(:v AS vector) WHERE id=:id"
-                ),
-                {"v": str(vector), "id": c.id},
+async def index_document(db, doc, commit=True):
+    last_id = ""
+    while True:
+        chunks = list(
+            db.scalars(
+                select(Chunk)
+                .where(Chunk.document_id == doc.id, Chunk.id > last_id)
+                .order_by(Chunk.id)
+                .limit(32)
             )
-    db.commit()
+        )
+        if not chunks:
+            break
+        vectors = await embed([c.text for c in chunks])
+        for c, vector in zip(chunks, vectors, strict=True):
+            c.embedding = vector
+            if db.bind.dialect.name == "postgresql":
+                db.execute(
+                    text(
+                        "UPDATE chunks SET vector_embedding=CAST(:v AS vector) WHERE id=:id"
+                    ),
+                    {"v": str(vector), "id": c.id},
+                )
+        last_id = chunks[-1].id
+        db.flush()
+    if commit:
+        db.commit()
 
 
-async def retrieve(db, session, expert_id, query, limit=6):
+async def retrieve(db, session, expert_id, query, limit=6, document_ids=None):
     ids = [
         d.id
         for d in db.scalars(select(Record).where(Record.kind == "context"))
         if visible(d, session, expert_id)
+        and (document_ids is None or d.id in document_ids)
     ]
     if not ids:
         return []
@@ -158,6 +181,7 @@ async def retrieve(db, session, expert_id, query, limit=6):
             "text": c.text,
             "title": db.get(Record, c.document_id).data["title"],
             "source": db.get(Record, c.document_id).data.get("source"),
+            "has_original": bool(db.get(Record, c.document_id).data.get("object_key")),
         }
         for c in chunks
     ]
@@ -202,8 +226,7 @@ def cleanup(db):
 
 
 def extract(content, content_type):
-    if len(content) > 20 * 1024 * 1024:
-        raise ValueError("Archivo mayor de 20 MB")
+    path = Path(content) if isinstance(content, (str, Path)) else None
     if content_type == "application/pdf":
         if os.getenv("DOCUMENT_PROCESSOR") == "docling":
             from docling.datamodel.base_models import DocumentStream, InputFormat
@@ -225,9 +248,9 @@ def extract(content, content_type):
                 },
             )
             result = converter.convert(
-                DocumentStream(name="attachment.pdf", stream=BytesIO(content)),
-                max_num_pages=500,
-                max_file_size=20 * 1024 * 1024,
+                path
+                if path
+                else DocumentStream(name="attachment.pdf", stream=BytesIO(content)),
             )
             pages = {}
             for item, _ in result.document.iterate_items():
@@ -242,10 +265,16 @@ def extract(content, content_type):
             return [(page, "\n".join(parts)) for page, parts in pages.items()]
         from pypdf import PdfReader
 
-        reader = PdfReader(BytesIO(content))
-        if len(reader.pages) > 500:
-            raise ValueError("PDF mayor de 500 páginas")
+        reader = PdfReader(path if path else BytesIO(content))
         return [(i + 1, p.extract_text() or "") for i, p in enumerate(reader.pages)]
     if content_type in ("text/plain", "text/markdown"):
+        if path:
+
+            def blocks():
+                with path.open(encoding="utf-8") as stream:
+                    while block := stream.read(65536):
+                        yield None, block
+
+            return blocks()
         return [(None, content.decode("utf-8"))]
     raise ValueError("Formato no soportado: solo PDF, texto y Markdown en esta versión")

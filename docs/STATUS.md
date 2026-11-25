@@ -29,7 +29,7 @@
 | Context Management Engine | SESSION default/24h, REQUEST expiry, all six scopes, expert restrictions, configurable retention, explicit promotion, deletion of originals/chunks/vectors, repeat-deletion tombstones and cross-client continuity. |
 | Multimodal extension | Future scope preserved; no claim of audio/video/podcast processing. |
 
-Docling runs in the production worker with CPU-only PyTorch, two threads, one concurrent ingestion, persistent model cache and a five-minute task limit. A real synthetic PDF was uploaded through Spaces, extracted with page 1 provenance, embedded and removed successfully. OCR remains disabled. Plain-text/PDF ingestion does not claim EPUB, HTML synchronization or multimedia support.
+Docling runs in the production worker with CPU-only PyTorch, two threads, one concurrent ingestion, persistent model cache and a 55-minute soft task limit and 60-minute hard task limit. A real synthetic PDF was uploaded through Spaces, extracted with page 1 provenance, embedded and removed successfully. OCR remains disabled. Plain-text/PDF ingestion does not claim EPUB, HTML synchronization or multimedia support.
 
 ## Verification evidence
 
@@ -49,3 +49,7 @@ Docling runs in the production worker with CPU-only PyTorch, two threads, one co
 - Original attachment expiry does not erase quotations already generated in private conversation history/checkpoints, provider retention or backups. Session deletion removes local temporary context, messages and checkpoints; permanent knowledge/approved artifacts/curated memories retain independent policies.
 - Managed database and droplet backups/restore have not been verified through the DigitalOcean control plane. The supplied doadmin database role is used initially; create a restricted application role and mount the provider CA for verify-full TLS as follow-up hardening. Supplied sslmode=require is active.
 - DNS was updated by the owner and public resolver A now returns 142.93.15.239 with no AAAA. Some recursive resolvers may retain the old parking answers until their cache expires. TLS was verified directly against the target address with the real hostname.
+
+## Grounding and expert content correction
+
+The previous ungrounded opinion behavior is disabled. Experts need reviewed primary libraries, retrieved exact quotations and claim review. References, extracted content and reviewed foundations are separate states. Professional profiles remain drafts until owner approval. X/YouTube URLs alone are not ingested evidence. The 20 MiB upload limit has been removed across the pipeline. See GROUNDING.md for behavior, retained operational limits and validation.

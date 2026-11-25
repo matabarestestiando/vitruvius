@@ -135,19 +135,31 @@ async def test_board_dynamic_router_and_limit(db, workspace):
 
     _, s, catalog = workspace
     experts = [db.get(Record, e["id"]) for e in catalog["expert"][:2]]
-    runner = BoardRunner(db, db.get(Record, s["id"]), experts, client=object())
+    from test_grounding import source, answer
+    import json
+
+    session = db.get(Record, s["id"])
+    docs = []
+    for e in experts:
+        d, c = source(db, e, session)
+        e.data = {**e.data, "primary_source_ids": [d.id]}
+        docs.append(c)
+    db.commit()
+    runner = BoardRunner(db, session, experts, client=object())
 
     async def fake(system, transcript, model=None, structured=False):
-        if structured:
-            return '{"done":false,"next_speaker":"' + experts[1].id + '"}'
-        if system.startswith("Resume"):
-            return "Provisional summary"
-        return "Antonio, necesito aclarar el requisito."
+        if system.startswith("Eres el moderador"):
+            return json.dumps({"done": False, "next_speaker": experts[1].id})
+        if system.startswith("Verifica"):
+            return json.dumps({"accepted_claim_indices": [0]})
+        return json.dumps(answer(docs[1].id))
 
     runner.complete = fake
     result = await runner.graph(2).ainvoke(
         {
-            "transcript": [{"speaker": "Owner", "content": "Design agent"}],
+            "transcript": [
+                {"speaker": "Owner", "content": "Project Meridian database"}
+            ],
             "turns": 0,
             "next_speaker": "",
             "done": False,
@@ -156,4 +168,10 @@ async def test_board_dynamic_router_and_limit(db, workspace):
     )
     assert result["turns"] == 2
     assert result["transcript"][1]["speaker"] == experts[1].data["name"]
-    assert result["summary"] == "Provisional summary"
+    assert "evidencia citada" in result["summary"]
+    assert (
+        db.query(__import__("app.db", fromlist=["Message"]).Message)
+        .filter_by(speaker=experts[1].data["name"])
+        .first()
+        .citations
+    )

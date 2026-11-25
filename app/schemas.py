@@ -40,6 +40,9 @@ class TurnIn(BaseModel):
 
 
 class SourceMetadata(BaseModel):
+    medium: Literal["text", "video", "social", "pdf"] = "text"
+    kind: Literal["author_work", "official_documentation", "other"] = "author_work"
+    reviewed_by_owner: bool = False
     author: str | None = Field(default=None, max_length=200)
     source_url: str | None = Field(default=None, max_length=2000)
     edition: str | None = Field(default=None, max_length=200)
@@ -110,3 +113,33 @@ class MemorySearchIn(BaseModel):
     scope: Literal["personal", "project", "board", "expert"]
     target_id: str | None = None
     query: str = Field(min_length=1, max_length=4000)
+
+
+class ExpertLibraryIn(BaseModel):
+    document_ids: list[str] = Field(max_length=100)
+    role: Literal["primary", "complementary"] = "primary"
+    approved: bool = False
+
+
+class ExpertReferenceIn(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    author: str = Field(min_length=1, max_length=200)
+    kind: Literal["article", "x_post", "pdf", "youtube"]
+    url: str | None = Field(default=None, max_length=2000)
+
+
+class ReferenceImportIn(BaseModel):
+    session_id: str
+    permanent_consent: bool = False
+
+
+class ReferenceTextIn(ReferenceImportIn):
+    text: str = Field(min_length=1, max_length=200000)
+
+
+class ProfileDraftIn(BaseModel):
+    session_id: str
+
+
+class ProfileApprovalIn(BaseModel):
+    approved: bool = False
