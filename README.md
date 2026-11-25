@@ -29,3 +29,7 @@ Las conversaciones se realizan desde clientes MCP compatibles conectados a Vitru
 ## Current product model
 
 Invoke the council with `start_conversation` from a connected MCP client. No project is required. Discuss freely; a specification is optional and only generated on request. Vitruvius proposes durable owner knowledge without silently saving it; approve a candidate or explicitly request `remember_memory`. The portal has no project or chat menu. See [docs/CONVERSATION_MODEL.md](docs/CONVERSATION_MODEL.md).
+
+## Cargar libros
+
+Abra **Biblioteca → Añadir libro o contenido**, seleccione el PDF, confirme título y autor, autorice conservarlo y pulse **Cargar libro**. Una vez procesado, **Revisar y habilitar** permite comprobar la autoría y asignar su uso. Las referencias que ya registró siguen disponibles con **Cargar PDF** para completar el envío. No se restablece el límite anterior de 20 MB.

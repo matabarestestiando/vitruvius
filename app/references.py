@@ -10,7 +10,7 @@ from .source_fetch import url_parts
 
 def validate_reference_url(kind, url):
     if not url:
-        if kind != "pdf":
+        if kind not in ("pdf","text"):
             raise HTTPException(422, "Indique el enlace de la fuente")
         return
     try:

@@ -367,6 +367,22 @@ def reference_upload(id: str, data: ReferenceImportIn, db: DB = D):
     return {"document_id": doc.id, "upload": upload(doc.id, "application/pdf", db)}
 
 
+@app.post("/api/references/{id}/resume-upload", dependencies=[O])
+def resume_reference_upload(id: str, data: ReferenceImportIn, db: DB = D):
+    ref=record(db,id,"reference")
+    record(db,data.session_id,"session")
+    if not data.permanent_consent:raise HTTPException(422,"Autorice conservar el PDF")
+    if ref.data["kind"]!="pdf" or not ref.data.get("document_id"):raise HTTPException(409,"Esta referencia no tiene una carga PDF pendiente")
+    doc=record(db,ref.data["document_id"],"context")
+    if doc.data.get("status") not in ("awaiting_upload","failed") or (doc.data.get("source") or {}).get("reviewed_by_owner"):
+        raise HTTPException(409,"Una fuente procesada o revisada no se puede reemplazar desde esta carga")
+    if not doc.data.get("object_key"):
+        return {"document_id":doc.id,"upload":upload(doc.id,"application/pdf",db)}
+    signed=spaces().generate_presigned_post(Bucket=settings.spaces_bucket,Key=doc.data["object_key"],Fields={"Content-Type":"application/pdf"},Conditions=[{"Content-Type":"application/pdf"}],ExpiresIn=300)
+    doc.data={**doc.data,"status":"awaiting_upload","content_type":"application/pdf"};db.commit()
+    return {"document_id":doc.id,"upload":signed}
+
+
 @app.post("/api/experts/{id}/profile/draft", dependencies=[O])
 async def draft_expert_profile(id: str, data: ProfileDraftIn, db: DB = D):
     from .board import BoardRunner

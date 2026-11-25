@@ -1,11 +1,20 @@
 # Estado actual: consejo y conversaciones libres
 
+## Carga de libros simplificada
+
+La navegación muestra Biblioteca. La acción principal «Añadir libro o contenido» abre un recorrido de archivo primero y datos después: seleccionar PDF, confirmar título/autor y autorización, cargar. No se muestran dos formularios ni se exige registrar una referencia como tarea separada. Los registros existentes sin contenido ofrecen «Cargar PDF». La carga se puede retomar con una URL renovada y la misma clave privada; solo se permite para documentos pendientes/fallidos no revisados, nunca para sustituir fuentes procesadas o revisadas.
+
+Después del procesamiento, cada tarjeta ofrece «Revisar y habilitar». La aprobación de autoría y el rol primario/complementario se mantienen explícitos. Perfil y administración avanzada están plegados. El texto aportado manualmente admite referencias sin URL inventada; X/YouTube requieren texto/transcripción para incorporarse como contenido.
+
+Corregida la configuración de iconos: casillas, estados y selectores usan SVG incluidos en Vuetify y ya son visibles sin descargar fuentes. Diálogos sin transición. Validación: 71 pruebas backend, compilación de producción, recorrido visual aislado de carga/revisión y prueba real en Spaces/Docling/pgvector de PDF sintético, reanudación e imposibilidad de reemplazarlo una vez revisado. Datos sintéticos de producción limpiados. Los libros del propietario no fueron modificados.
+
+
 - El propietario invoca al consejo desde un cliente MCP conectado. `start_conversation` no requiere proyecto. Se retiraron el menú y la creación de proyectos del portal, además de los antiguos tools MCP de configuración de proyectos. El chat del portal sigue eliminado.
 - Una conversación puede terminar sin artefactos. La especificación solo se genera a petición y su exportación exige aprobar la revisión actual de esa conversación.
 - Vitruvius evalúa declaraciones del propietario y propone recuerdos duraderos con razón y cita literal. No guarda automáticamente las propuestas. El propietario puede aprobarlas, descartarlas o pedir expresamente que se guarde un texto.
 - Las peticiones explícitas escriben en la memoria privada y conservan el texto aprobado como registro canónico recuperable. La búsqueda no depende de que Graphiti haya extraído relaciones de ese texto. El catálogo general no expone los textos de memoria.
 - Producción verificada: inicio sin proyecto; revisión real por modelo con propuesta sin escritura; consentimiento obligatorio; guardado real en Graphiti privado y recuperación del texto aprobado; especificación solicitada, aprobada y exportada; limpieza completa de datos sintéticos.
-- 69 pruebas backend y compilación frontend correctas. El procesamiento de carpetas conserva sus tres pruebas de navegador. Vista aislada del portal validada sin proyectos ni chat.
+- 71 pruebas backend y compilación frontend correctas. El procesamiento de carpetas conserva sus tres pruebas de navegador. Vista aislada del portal validada sin proyectos ni chat.
 - No se probó la conexión desde las cuentas particulares del propietario en Gemini, ChatGPT y Claude Code; cada cliente debe admitir MCP remoto y la autenticación existente. Actualice las herramientas del cliente para usar el nuevo recorrido.
 - Datos y asociaciones anteriores conservados. Los ámbitos internos de compatibilidad son privados por conversación y no son una configuración del producto. Véase CONVERSATION_MODEL.md.
 

@@ -124,7 +124,7 @@ class ExpertLibraryIn(BaseModel):
 class ExpertReferenceIn(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     author: str = Field(min_length=1, max_length=200)
-    kind: Literal["article", "x_post", "pdf", "youtube"]
+    kind: Literal["article", "x_post", "pdf", "youtube", "text"]
     url: str | None = Field(default=None, max_length=2000)
 
 
