@@ -1,7 +1,0 @@
-<script setup>
-import {ref,watch,onUnmounted} from 'vue';
-const props=defineProps({attachment:Object,session:String,token:String});const url=ref(''),error=ref(''),expanded=ref(false);let controller;
-function dispose(){controller?.abort();if(url.value)URL.revokeObjectURL(url.value);url.value='';}
-watch(()=>[props.attachment.id,props.attachment.available,props.session],async()=>{dispose();error.value='';if(!props.attachment.available)return;controller=new AbortController();try{const r=await fetch('/api/sessions/'+props.session+'/attachments/'+props.attachment.id,{headers:{Authorization:'Bearer '+props.token},signal:controller.signal});if(!r.ok)throw Error('Adjunto no disponible');url.value=URL.createObjectURL(await r.blob());}catch(e){if(e.name!=='AbortError')error.value=e.message;}},{immediate:true});onUnmounted(dispose);
-</script>
-<template><div class="chat-attachment"><template v-if="url"><button v-if="attachment.content_type.startsWith('image/')" class="image-preview" @click="expanded=true" aria-label="Ampliar imagen"><img :src="url" :alt="attachment.title"/></button><a :href="url" :download="attachment.title">{{attachment.generated?'Imagen generada · ':''}}{{attachment.title}} ↓</a></template><span v-else>{{attachment.title}} · {{!attachment.available?'Adjunto temporal expirado':error||'Cargando vista previa…'}}</span><dialog :open="expanded" v-if="expanded" class="image-dialog"><button @click="expanded=false">Cerrar imagen</button><img :src="url" :alt="attachment.title"/></dialog></div></template>
